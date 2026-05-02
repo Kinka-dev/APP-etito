@@ -1,4 +1,5 @@
 // src/context/RecipeContext.tsx
+import { DEFAULT_RECIPES } from "@/app/data/defaultRecipes";
 import { Ingredient, Recipe } from "@/src/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
@@ -44,6 +45,22 @@ export function RecipeProvider({ children }: { children: ReactNode }) {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [shoppingList, setShoppingListState] = useState<ShoppingItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      const saved = await AsyncStorage.getItem("recipes");
+
+      if (!saved) {
+        // prima apertura dell'app
+        await AsyncStorage.setItem("recipes", JSON.stringify(DEFAULT_RECIPES));
+        setRecipes(DEFAULT_RECIPES);
+      } else {
+        setRecipes(JSON.parse(saved));
+      }
+    }
+
+    load();
+  }, []);
 
   const loadData = useCallback(async () => {
     try {

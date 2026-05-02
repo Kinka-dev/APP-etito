@@ -155,6 +155,7 @@ export default function RecipesScreen() {
                       group.items.map((ing) => ({
                         ...ing,
                         checked: false,
+                        linkedRecipeId: ing.linkedRecipeId ?? undefined,
                       })),
                     ),
                   );

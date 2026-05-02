@@ -149,6 +149,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     textAlign: "center",
     marginBottom: 20,
+    borderColor: "white",
   },
   row: { flexDirection: "row", gap: 16, marginBottom: 20 },
   pickerContainer: { flex: 1 },

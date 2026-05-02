@@ -5,6 +5,7 @@ export interface Ingredient {
   unit: string;
   group?: string;
   checked: boolean;
+  linkedRecipeId?: string;
 }
 
 export type IngredientItem = {
@@ -12,6 +13,7 @@ export type IngredientItem = {
   name: string;
   quantity: string;
   unit: string;
+  linkedRecipeId?: string | null; // ⭐ AGGIUNTO
 };
 
 export type IngredientGroup = {
@@ -21,11 +23,13 @@ export type IngredientGroup = {
 };
 
 export interface Step {
+  id: string;
   description: string;
   imageUri?: string | null;
   checked: boolean;
   title: string;
   textImageUri?: string | null;
+  mode: "text" | "ocr" | "photo";
 }
 
 export interface Recipe {
@@ -41,6 +45,7 @@ export interface Recipe {
   notes?: {
     text?: string;
     image?: string | null;
+    ocrImage?: string | null;
     mode?: "text" | "ocr" | "photo";
   };
   ingredientsMode?: "text" | "ocr" | "photo";

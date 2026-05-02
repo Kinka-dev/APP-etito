@@ -27,6 +27,7 @@ type IngredientItem = {
   name: string;
   quantity: string;
   unit: string;
+  linkedRecipeId?: string | null;
 };
 
 type IngredientGroup = {
@@ -49,10 +50,12 @@ export default function RecipeDetailScreen() {
     : null;
 
   const { recipes, deleteRecipe, addToShoppingList } = useRecipeContext();
-
-  // ⭐ Se arriva una ricetta aggiornata via params, usala.
-  // Altrimenti cerca nel context.
   const recipe = updatedRecipe ?? recipes.find((r) => r.id === id);
+
+  console.log(
+    "DEFAULT RECIPE INGREDIENTS:",
+    JSON.stringify(recipe?.ingredients, null, 2),
+  );
 
   const [checkedIngredients, setCheckedIngredients] = useState<
     Record<string, boolean>
@@ -101,10 +104,6 @@ export default function RecipeDetailScreen() {
     }));
   };
 
-  const toggleStepCheck = (index: number) => {
-    setCheckedSteps((prev) => ({ ...prev, [index]: !prev[index] }));
-  };
-
   const addSingleIngredient = (ing: any) => {
     addToShoppingList([ing]);
     Alert.alert(
@@ -127,7 +126,8 @@ export default function RecipeDetailScreen() {
     ]);
   };
 
-  async function uriToBase64(uri: string) {
+  async function uriToBase64(uri: string | null | undefined) {
+    if (!uri) return null;
     try {
       const base64 = await FileSystem.readAsStringAsync(uri, {
         encoding: "base64",
@@ -137,6 +137,17 @@ export default function RecipeDetailScreen() {
       console.log("Errore conversione base64:", e);
       return "";
     }
+  }
+
+  async function loadIconBase64(icon: number): Promise<string> {
+    const asset = Asset.fromModule(icon);
+    await asset.downloadAsync();
+
+    const base64 = await FileSystem.readAsStringAsync(asset.localUri!, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    return `data:image/png;base64,${base64}`;
   }
 
   async function loadFontBase64() {
@@ -150,6 +161,34 @@ export default function RecipeDetailScreen() {
     });
 
     return `data:font/ttf;base64,${base64}`;
+  }
+
+  type FlatEntry =
+    | { type: "group"; title: string }
+    | { type: "item"; item: IngredientItem };
+
+  function splitIngredientsForPdf(groups: IngredientGroup[]) {
+    const flat: FlatEntry[] = [];
+
+    groups.forEach((group) => {
+      if (group.title) {
+        flat.push({ type: "group", title: group.title });
+      }
+      group.items.forEach((item) => {
+        flat.push({ type: "item", item });
+      });
+    });
+
+    const MAX_FIRST_COLUMN = 8;
+
+    if (flat.length <= MAX_FIRST_COLUMN) {
+      return { col1: flat, col2: [] };
+    }
+
+    return {
+      col1: flat.slice(0, MAX_FIRST_COLUMN),
+      col2: flat.slice(MAX_FIRST_COLUMN),
+    };
   }
 
   async function loadLogoBase64() {
@@ -167,16 +206,761 @@ export default function RecipeDetailScreen() {
     const fontBase64 = await loadFontBase64();
     const logoBase64 = await loadLogoBase64();
 
-    const mainImage = recipe.imageUri ? await uriToBase64(recipe.imageUri) : "";
-
-    const stepsWithImages = await Promise.all(
-      recipe.steps.map(async (step) => ({
-        ...step,
-        imageBase64: step.imageUri ? await uriToBase64(step.imageUri) : "",
-      })),
+    const iconCategory = await loadIconBase64(CATEGORY_IMAGES[recipe.category]);
+    const iconTime = await loadIconBase64(
+      require("../../assets/images/orologio.png"),
+    );
+    const iconServings = await loadIconBase64(
+      require("../../assets/images/porzioni.png"),
     );
 
-    const html = `...`; // ⬅️ qui tieni il tuo HTML esistente, non lo tocco per brevità
+    const mainImage = await uriToBase64(recipe.imageUri ?? null);
+    const defaultImageBase64 = await loadIconBase64(
+      require("../../assets/images/senza-immagine.jpg"),
+    );
+
+    const ingredientsPhoto = await uriToBase64(recipe.ingredientsPhoto ?? null);
+    const ingredientsOcrImage = await uriToBase64(
+      recipe.ingredientsOcrImage ?? null,
+    );
+
+    const notesImage = await uriToBase64(recipe.notes?.image ?? null);
+    const notesOcrImage = await uriToBase64(recipe.notes?.ocrImage ?? null);
+
+    const stepsWithImages = await Promise.all(
+      recipe.steps.map(async (s) => ({
+        ...s,
+        imageBase64: await uriToBase64(s.imageUri ?? null),
+        ocrBase64: await uriToBase64(s.textImageUri ?? null),
+      })),
+    );
+    const { col1, col2 } = splitIngredientsForPdf(recipe.ingredients);
+
+    const html = `
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @font-face {
+        font-family: 'Outfit';
+        src: url(${fontBase64});
+      }
+        /* QUADRANTI PRIMA PAGINA */
+.first-page-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 20px;
+  width: 100%;
+  height: 100%;
+  margin-bottom: 40px;
+}
+
+/* FOTO RICETTA */
+.recipe-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 14px;
+}
+
+/* TITOLO */
+.title-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.title-box h1 {
+  font-size: 42px;
+  color: #cb0047;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* INFO (categoria, tempo, porzioni) */
+.info-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  justify-content: center;
+  padding-left: 10px;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.info-item img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.info-label {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.info-value {
+  font-size: 18px;
+}
+
+/* INGREDIENTI */
+.ingredients-box {
+  padding: 10px;
+  overflow: hidden;
+}
+
+.ingredients-list {
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.ingredients-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 14px;
+}
+
+
+      body {
+        font-family: 'Outfit';
+        padding: 28px;
+        color: #333;
+        line-height: 1.5;
+      }
+
+      /* LOGO + DIVIDER */
+      .logo-divider {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 20px;
+        margin-top: 10px;
+      }
+
+      .logo-divider-line {
+        flex: 1;
+        height: 2px;
+        background-color: #9e588f;
+      }
+
+      .logo-divider img {
+        width: 90px;
+        height: 90px;
+        border-radius: 50%;
+        object-fit: cover;
+        margin: 0 12px;
+      }
+
+      /* TITOLI */
+      h1, h2 {
+        text-align: center;
+        color: #000000;
+      }
+
+      h1 {
+        font-size: 40px;
+        margin-bottom: 10px;
+      }
+
+      /* INFO + TAGS */
+      .info-row {
+        display: flex;
+        justify-content: center;
+        gap: 24px;
+        font-size: 16px;
+        margin-top: 20px;
+        margin-bottom: 20px;
+      }
+
+      .tags-row {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-bottom: 30px;
+        flex-wrap: wrap;
+      }
+
+      .tag {
+        background: #eee;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 14px;
+        
+      }
+
+      /* FOTO PRINCIPALE */
+      .main-image {
+        width: 60%;
+        height: 300px;
+        object-fit: cover;
+        border-radius: 14px;
+        display: block;
+        margin: 0 auto 24px auto;
+      }
+
+      /* FOTO INGREDIENTI FISSA */
+      .ingredients-fixed-image {
+        width: 60%;
+        height: 260px;
+        object-fit: cover;
+        border-radius: 14px;
+        display: block;
+        margin: 0 auto 24px auto;
+      }
+
+      /* SEZIONI */
+      .section-divider {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 30px 0 20px 0;
+      }
+
+      .section-line {
+        flex: 1;
+        height: 2px;
+        background-color: #9e588f;
+      }
+
+      .section-title {
+        font-size: 35px;
+        font-weight: 600;
+        color: #625e59;
+        margin: 0 20px;
+        white-space: nowrap;
+        text-decoration: underline;
+        text-align: center;
+        align-items: center;
+        margin-top: 50px;
+        margin-bottom: 30px;
+      }
+
+      /* INGREDIENTI — colonne solo se necessario */
+      .ingredients-container {
+        column-count: 1;
+        column-gap: 40px;
+      }
+
+      .ingredients-container.two-columns {
+        column-count: 2;
+      }
+
+      .ingredient {
+        font-size: 17px;
+        margin-bottom: 6px;
+        break-inside: avoid;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .checkbox {
+        width: 14px;
+        height: 14px;
+        border: 2px solid #8b8b8bad;
+        border-radius: 3px;
+        display: inline-block;
+      }
+
+      /* PAGE BREAK */
+      .page-break {
+        page-break-after: always;
+      }
+
+      /* LAYOUT 1 SOLO STEP */
+      .step-horizontal {
+        display: flex;
+        flex-direction: row;
+        gap: 20px;
+        align-items: flex-start;
+      }
+
+      .step-horizontal img {
+        width: 320px;
+        height: 260px;
+        object-fit: cover;
+        border-radius: 12px;
+      }
+
+      .step-text {
+        flex: 1;
+        font-size: 17px;
+      }
+
+      /* LAYOUT 2 PER RIGA */
+      .steps-grid {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 16px;
+        box-sizing: border-box;
+        padding: 16px;
+      }
+
+      .step-card {
+        background: #ffffff;
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid #eee;
+        width: calc(50% - 12px);
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .step-card img {
+        width: 100%;
+        height: 220px;
+        object-fit: cover;
+        border-radius: 10px;
+        margin-bottom: 8px;
+      }
+
+      /* HEADER DELLA CARD */
+      .step-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .step-number {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background-color: #625e59;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: bold;
+      }
+
+      .step-title {
+        font-size: 17px;
+        font-weight: 600;
+      }
+
+      /* DIVISORE + CHECKBOX */
+      .step-check-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+      }
+
+      .step-inner-divider {
+        flex: 1;
+        height: 2px;
+        background-color: #625e59;
+        border-radius: 2px;
+      }
+
+      .step-checkbox {
+        width: 18px;
+        height: 18px;
+        border: 2px solid #8b8b8bad;
+        border-radius: 3px;
+      }
+
+      /* NOTE */
+      .notes {
+        font-size: 17px;
+        margin-top: 10px;
+        white-space: pre-wrap;
+      }
+
+      /* FOOTER */
+      .footer {
+        text-align: center;
+        font-size: 14px;
+        color: #999;
+        margin-top: 40px;
+        padding-top: 12px;
+        border-top: 1px solid #eee;
+      }
+        .side-by-side {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.side-by-side img {
+  width: 260px;
+  height: 220px;
+  object-fit: cover;
+}
+
+.side-by-side .text-block {
+  flex: 1;
+}
+/* CONTENITORE PRINCIPALE */
+.first-page {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* RIGA SUPERIORE: due quadranti */
+.row-top {
+  display: flex;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+}
+
+/* QUADRANTI SUPERIORI */
+.q1, .q2 {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* FOTO */
+.recipe-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0
+}
+
+/* TITOLO + INFO */
+.q2 {
+  background: #fff9f1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 40px;
+  gap: 40px;
+}
+
+.q2 h1 {
+  font-size: 50px;
+  color: #625e59;
+  text-align: center;
+  margin: 0;
+  padding: 0;
+}
+
+/* INFO IN RIGA */
+.info-row {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.info-item img {
+  width: 34px;
+  height: 34px;
+}
+
+.info-label {
+  font-size: 18px;
+  font-weight: 600;
+  color: #625e59;
+}
+
+.info-value {
+  font-size: 18px;
+  color: #625e59;
+}
+
+/* DIVISORE */
+.quadrant-divider {
+  height: 25px;
+  background-color: #625e59;
+  flex: 0 0 25px;
+  margin: 0;
+  padding: 0;
+}
+
+/* RIGA INFERIORE: INGREDIENTI */
+.row-bottom {
+  flex: 1.2;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+}
+
+/* CONTENITORE INGREDIENTI */
+.ingredients-wrapper {
+  width: 90%;
+}
+
+/* TITOLO INGREDIENTI */
+.ingredients-title {
+  font-size: 35px;
+  font-weight: 700;
+  color: #625e59;
+  text-align: center;
+  margin-bottom: 30px;
+  text-decoration: underline;
+
+}
+
+/* LISTA INGREDIENTI A 1 O 2 COLONNE */
+.ingredients-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  column-gap: 40px;
+  row-gap: 20px;
+}
+
+/* RIGA INGREDIENTE */
+.ingredient-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.checkbox {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #625e59;
+}
+  .ingredients-columns {
+  display: flex;
+  gap: 40px;
+}
+
+.column {
+  flex: 1;
+}
+
+.group-title {
+  font-weight: 700;
+  margin-top: 12px;
+  margin-bottom: 6px;
+  color: #625e59;
+}
+
+    </style>
+  </head>
+
+  <body>
+
+<div class="first-page">
+
+  <!-- RIGA SUPERIORE -->
+  <div class="row-top">
+
+    <!-- QUADRANTE 1: FOTO -->
+    <div class="q1">
+      <img 
+        class="recipe-photo" 
+        src="${mainImage || defaultImageBase64}" 
+      />
+    </div>
+
+    <!-- QUADRANTE 2: TITOLO + INFO -->
+    <div class="q2">
+      <h1>${recipe.title}</h1>
+
+      <div class="info-row">
+
+        <div class="info-item">
+          <img src="${iconCategory}" />
+          <div>
+            <div class="info-label">Categoria</div>
+            <div class="info-value">${recipe.category}</div>
+          </div>
+        </div>
+
+        <div class="info-item">
+          <img src="${iconTime}" />
+          <div>
+            <div class="info-label">Tempo</div>
+            <div class="info-value">${recipe.prepTime}</div>
+          </div>
+        </div>
+
+        <div class="info-item">
+          <img src="${iconServings}" />
+          <div>
+            <div class="info-label">Porzioni</div>
+            <div class="info-value">${recipe.servings}</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- DIVISORE -->
+  <div class="quadrant-divider"></div>
+
+  <!-- RIGA INFERIORE: INGREDIENTI -->
+  <div class="row-bottom">
+
+    <div class="ingredients-wrapper">
+      <div class="ingredients-title">Ingredienti</div>
+
+<div class="ingredients-columns">
+
+  <div class="column">
+    ${col1
+      .map((entry) => {
+        if (entry.type === "group") {
+          return `<div class="group-title">${entry.title}</div>`;
+        }
+        const i = entry.item;
+        return `
+          <div class="ingredient-row">
+            <div class="checkbox"></div>
+            <div>${i.quantity} ${i.unit} ${i.name}</div>
+          </div>
+        `;
+      })
+      .join("")}
+  </div>
+
+  ${
+    col2.length > 0
+      ? `
+        <div class="column">
+          ${col2
+            .map((entry) => {
+              if (entry.type === "group") {
+                return `<div class="group-title">${entry.title}</div>`;
+              }
+              const i = entry.item;
+              return `
+                <div class="ingredient-row">
+                  <div class="checkbox"></div>
+                  <div>${i.quantity} ${i.unit} ${i.name}</div>
+                </div>
+              `;
+            })
+            .join("")}
+        </div>
+      `
+      : ""
+  }
+
+</div>
+
+    </div>
+
+  </div>
+
+</div>
+
+    <!-- PAGE BREAK -->
+    <div class="page-break"></div>
+
+    <!-- PROCEDIMENTO -->
+      <div class="section-title">Procedimento</div>
+    </div>
+
+    ${
+      stepsWithImages.length === 1
+        ? `
+      <div class="step-horizontal">
+        
+
+        ${
+          stepsWithImages[0].imageBase64
+            ? `<img src="${stepsWithImages[0].imageBase64}" />`
+            : ""
+        }
+        ${
+          stepsWithImages[0].ocrBase64
+            ? `<img src="${stepsWithImages[0].ocrBase64}" />`
+            : ""
+        }
+        <div class="step-text">
+          <div class="step-title">${stepsWithImages[0].title || ""}</div>
+          <div>${stepsWithImages[0].description}</div>
+        </div>
+      </div>
+    `
+        : `
+      <div class="steps-grid">
+        ${stepsWithImages
+          .map(
+            (step, index) => `
+          <div class="step-card">
+            <div class="step-header">
+              <div class="step-number">${index + 1}</div>
+              <div class="step-title">${step.title || ""}</div>
+            </div>
+
+            ${step.imageBase64 ? `<img src="${step.imageBase64}" />` : ""}
+            ${step.ocrBase64 ? `<img src="${step.ocrBase64}" />` : ""}
+
+            <div>${step.description}</div>
+
+            <div class="step-check-row">
+              <div class="step-checkbox"></div>
+            </div>
+          </div>
+        `,
+          )
+          .join("")}
+      </div>
+    `
+    }
+
+${
+  recipe.notes
+    ? `
+        <div class="section-title">Note</div>
+      </div>
+
+      ${
+        notesImage || notesOcrImage
+          ? `
+            <div class="side-by-side">
+              ${
+                notesImage
+                  ? `<img src="${notesImage}" />`
+                  : notesOcrImage
+                    ? `<img src="${notesOcrImage}" />`
+                    : ""
+              }
+
+              <div class="text-block">
+                <div class="notes">${recipe.notes.text ?? ""}</div>
+              </div>
+            </div>
+          `
+          : `
+            <div class="notes">${recipe.notes.text ?? ""}</div>
+          `
+      }
+    `
+    : ""
+}
+
+
+    <div class="footer">Creato con APPetito</div>
+
+  </body>
+</html>
+`;
 
     const { uri } = await Print.printToFileAsync({ html });
     return uri;
@@ -191,6 +975,8 @@ export default function RecipeDetailScreen() {
       Alert.alert("Errore", "Impossibile generare il PDF");
     }
   }
+
+  const HIDDEN_TITLE = "Ingredienti";
 
   return (
     <SafeAreaView style={styles.container}>
@@ -267,7 +1053,7 @@ export default function RecipeDetailScreen() {
 
             <View style={styles.separator} />
 
-            {/* ⭐ 1. FOTO INGREDIENTI */}
+            {/* ⭐ 1. FOTO INGREDIENTI — mostrata se presente */}
             {recipe.ingredientsPhoto && (
               <Image
                 source={{ uri: recipe.ingredientsPhoto }}
@@ -275,25 +1061,119 @@ export default function RecipeDetailScreen() {
               />
             )}
 
-            {/* ⭐ 2. OCR INGREDIENTI */}
-            {!recipe.ingredientsPhoto && recipe.ingredientsOcrImage && (
+            {/* ⭐ 2. OCR INGREDIENTI — mostrato se presente */}
+            {recipe.ingredientsOcrImage && (
               <Image
                 source={{ uri: recipe.ingredientsOcrImage }}
                 style={styles.stepImage}
               />
             )}
 
-            {/* ⭐ 3. LISTA INGREDIENTI (solo se NON ci sono foto/OCR) */}
-            {!recipe.ingredientsPhoto &&
-              !recipe.ingredientsOcrImage &&
-              (ungroupedIngredients.length > 0 ||
-                ingredientGroups.some((g) => g.items.length > 0)) && (
-                <>
-                  {/* Ingredienti senza gruppo */}
-                  {ungroupedIngredients.length > 0 &&
-                    ungroupedIngredients.map(
-                      (ing: IngredientItem, index: number) => {
-                        const key = `free-${index}`;
+            {/* ⭐ 3. LISTA INGREDIENTI — SEMPRE visibile */}
+            {(ungroupedIngredients.length > 0 ||
+              ingredientGroups.some((g) => g.items.length > 0)) && (
+              <>
+                {/* Ingredienti senza gruppo */}
+                {ungroupedIngredients.length > 0 &&
+                  ungroupedIngredients.map(
+                    (ing: IngredientItem, index: number) => {
+                      const key = `free-${index}`;
+                      const isChecked = checkedIngredients[key] || false;
+
+                      return (
+                        <View key={ing.id} style={styles.ingredientRow}>
+                          <TouchableOpacity
+                            style={styles.checkbox}
+                            onPress={() => toggleIngredientCheck(key)}
+                          >
+                            <Ionicons
+                              name={isChecked ? "checkbox" : "square-outline"}
+                              size={26}
+                              color={isChecked ? "#3a8654" : "#666"}
+                            />
+                          </TouchableOpacity>
+
+                          <View style={styles.verticalDivider} />
+
+                          <View style={styles.ingredientMain}>
+                            <Text
+                              style={[
+                                styles.ingredientName,
+                                isChecked && styles.checkedText,
+                              ]}
+                            >
+                              {ing.name}
+                            </Text>
+
+                            {ing.linkedRecipeId &&
+                              (() => {
+                                const linkedRecipe = recipes.find(
+                                  (r) => r.id === ing.linkedRecipeId,
+                                );
+                                if (!linkedRecipe) return null;
+
+                                return (
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      router.push(`/recipe/${linkedRecipe.id}`)
+                                    }
+                                    style={{
+                                      flexDirection: "row",
+                                      alignItems: "center",
+                                      marginTop: 4,
+                                    }}
+                                  >
+                                    <Ionicons
+                                      name="link-outline"
+                                      size={18}
+                                      color={COLORS.primary}
+                                    />
+                                    <Text
+                                      style={{
+                                        marginLeft: 6,
+                                        color: COLORS.primary,
+                                        fontSize: 14,
+                                      }}
+                                    >
+                                      Vai alla ricetta
+                                    </Text>
+                                  </TouchableOpacity>
+                                );
+                              })()}
+                          </View>
+
+                          <Text style={styles.quantityText}>
+                            {ing.quantity} {ing.unit}
+                          </Text>
+
+                          <TouchableOpacity
+                            style={styles.addSingleBtn}
+                            onPress={() => addSingleIngredient(ing)}
+                          >
+                            <Ionicons
+                              name="add-circle-outline"
+                              size={24}
+                              color={COLORS.primary}
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    },
+                  )}
+
+                {/* Gruppi */}
+                {ingredientGroups
+                  .filter((g) => g.id !== "ungrouped" && g.items.length > 0)
+                  .map((group: IngredientGroup, groupIndex: number) => (
+                    <View key={group.id} style={{ marginBottom: 20 }}>
+                      {!HIDDEN_TITLE.includes(group.title.trim()) && (
+                        <Text variant="title" style={styles.ingredientGroup}>
+                          {group.title}
+                        </Text>
+                      )}
+
+                      {group.items.map((ing: IngredientItem, index: number) => {
+                        const key = `${groupIndex}-${index}`;
                         const isChecked = checkedIngredients[key] || false;
 
                         return (
@@ -309,9 +1189,6 @@ export default function RecipeDetailScreen() {
                               />
                             </TouchableOpacity>
 
-                            {/* DIVIDER VERTICALE */}
-                            <View style={styles.verticalDivider} />
-
                             <View style={styles.ingredientMain}>
                               <Text
                                 style={[
@@ -321,6 +1198,44 @@ export default function RecipeDetailScreen() {
                               >
                                 {ing.name}
                               </Text>
+
+                              {ing.linkedRecipeId &&
+                                (() => {
+                                  const linkedRecipe = recipes.find(
+                                    (r) => r.id === ing.linkedRecipeId,
+                                  );
+                                  if (!linkedRecipe) return null;
+
+                                  return (
+                                    <TouchableOpacity
+                                      onPress={() =>
+                                        router.push(
+                                          `/recipe/${linkedRecipe.id}`,
+                                        )
+                                      }
+                                      style={{
+                                        flexDirection: "row",
+                                        alignItems: "center",
+                                        marginTop: 4,
+                                      }}
+                                    >
+                                      <Ionicons
+                                        name="link-outline"
+                                        size={18}
+                                        color="#4A90E2"
+                                      />
+                                      <Text
+                                        style={{
+                                          marginLeft: 6,
+                                          color: "#4A90E2",
+                                          fontSize: 14,
+                                        }}
+                                      >
+                                        {linkedRecipe.title}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  );
+                                })()}
                             </View>
 
                             <Text style={styles.quantityText}>
@@ -339,74 +1254,11 @@ export default function RecipeDetailScreen() {
                             </TouchableOpacity>
                           </View>
                         );
-                      },
-                    )}
-
-                  {/* Gruppi */}
-                  {ingredientGroups
-                    .filter((g) => g.items.length > 0)
-                    .map((group: IngredientGroup, groupIndex: number) => (
-                      <View key={group.id} style={{ marginBottom: 20 }}>
-                        <Text variant="title" style={styles.ingredientGroup}>
-                          {group.title}
-                        </Text>
-
-                        {group.items.map(
-                          (ing: IngredientItem, index: number) => {
-                            const key = `${groupIndex}-${index}`;
-                            const isChecked = checkedIngredients[key] || false;
-
-                            return (
-                              <View key={ing.id} style={styles.ingredientRow}>
-                                <TouchableOpacity
-                                  style={styles.checkbox}
-                                  onPress={() => toggleIngredientCheck(key)}
-                                >
-                                  <Ionicons
-                                    name={
-                                      isChecked ? "checkbox" : "square-outline"
-                                    }
-                                    size={26}
-                                    color={isChecked ? "#3a8654" : "#666"}
-                                  />
-                                </TouchableOpacity>
-
-                                {/* DIVIDER VERTICALE */}
-                                <View style={styles.verticalDivider} />
-
-                                <View style={styles.ingredientMain}>
-                                  <Text
-                                    style={[
-                                      styles.ingredientName,
-                                      isChecked && styles.checkedText,
-                                    ]}
-                                  >
-                                    {ing.name}
-                                  </Text>
-                                </View>
-
-                                <Text style={styles.quantityText}>
-                                  {ing.quantity} {ing.unit}
-                                </Text>
-
-                                <TouchableOpacity
-                                  style={styles.addSingleBtn}
-                                  onPress={() => addSingleIngredient(ing)}
-                                >
-                                  <Ionicons
-                                    name="add-circle-outline"
-                                    size={24}
-                                    color={COLORS.primary}
-                                  />
-                                </TouchableOpacity>
-                              </View>
-                            );
-                          },
-                        )}
-                      </View>
-                    ))}
-                </>
-              )}
+                      })}
+                    </View>
+                  ))}
+              </>
+            )}
           </View>
         )}
 
@@ -479,7 +1331,7 @@ export default function RecipeDetailScreen() {
                       }
                     >
                       <Ionicons
-                        name="timer-outline"
+                        name="time-outline"
                         size={26}
                         color={COLORS.primary}
                       />
@@ -602,9 +1454,14 @@ export default function RecipeDetailScreen() {
             onPress={() => {
               addToShoppingList(
                 recipe.ingredients.flatMap((group) =>
-                  group.items.map((ing) => ({ ...ing, checked: false })),
+                  group.items.map((ing) => ({
+                    ...ing,
+                    checked: false,
+                    linkedRecipeId: ing.linkedRecipeId ?? undefined, // ⭐ FIX
+                  })),
                 ),
               );
+
               showAddedToast();
             }}
           >
@@ -627,13 +1484,14 @@ export default function RecipeDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    marginTop: 60,
+    paddingTop: 60,
     backgroundColor: "#fffaf0",
   },
   scrollContent: { paddingBottom: 40 },
   titleContainer: {
     alignItems: "center",
     marginBottom: 12,
+    paddingHorizontal: 20,
   },
   title: {
     fontSize: 28,

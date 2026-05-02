@@ -16,6 +16,7 @@ import {
   Alert,
   Image,
   LayoutAnimation,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -32,6 +33,18 @@ import { SafeAreaView } from "react-native-safe-area-context";
 /* ============================================================
    TIPI
    ============================================================ */
+export interface IngredientItem {
+  id: string;
+  name: string;
+  quantity: string;
+  unit: string;
+  linkedRecipeId?: string | null;
+}
+export interface IngredientGroup {
+  id: string;
+  title: string;
+  items: IngredientItem[];
+}
 
 interface IngredientFlat {
   type: "ingredient";
@@ -40,6 +53,7 @@ interface IngredientFlat {
   quantity: string;
   unit: string;
   groupId: string | null;
+  linkedRecipeId?: string;
 }
 
 interface GroupFlat {
@@ -69,7 +83,7 @@ type StepListItem = StepForm | { isAddButton: true };
 
 export default function EditRecipeScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { recipes, updateRecipe } = useRecipeContext();
+  const { recipes, updateRecipe, addRecipe } = useRecipeContext();
 
   const existingRecipe = recipes.find((r) => r.id === id);
   if (!existingRecipe) return null; // evita undefined
@@ -111,6 +125,14 @@ export default function EditRecipeScreen() {
   const [items, setItems] = useState<FlatItem[]>([]);
   const existingGroups = items.filter((i) => i.type === "group") as GroupFlat[];
 
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [selectedIngredientIndex, setSelectedIngredientIndex] = useState<
+    string | null
+  >(null);
+
+  const [expandedActions, setExpandedActions] = useState<{
+    [key: string]: boolean;
+  }>({});
   /* ============================================================
      STEP
      ============================================================ */
@@ -194,28 +216,89 @@ export default function EditRecipeScreen() {
     setItems(flat);
   }, [existingRecipe]);
 
+  const openRecipePicker = (ingredientId: string) => {
+    console.log("APRO PICKER PER:", ingredientId);
+    setSelectedIngredientIndex(ingredientId);
+    setIsPickerOpen(true);
+  };
+
+  const closeRecipePicker = () => {
+    setIsPickerOpen(false);
+    setSelectedIngredientIndex(null);
+  };
+
+  const selectLinkedRecipe = (recipeId: string) => {
+    if (!selectedIngredientIndex) return;
+
+    setItems((prev) =>
+      prev.map((i) =>
+        i.id === selectedIngredientIndex
+          ? { ...i, linkedRecipeId: recipeId }
+          : i,
+      ),
+    );
+
+    setIsPickerOpen(false);
+    setSelectedIngredientIndex(null);
+  };
+
   /* ============================================================
    FUNZIONI INGREDIENTI — LISTA PIATTA
    ============================================================ */
+  /* ============================================================
+   UPDATE GROUP TITLE — IDENTICO A edit/[id].tsx
+   ============================================================ */
+  const updateGroupTitle = (groupId: string, text: string) => {
+    setItems((prev) =>
+      prev.map((i) =>
+        i.type === "group" && i.id === groupId ? { ...i, title: text } : i,
+      ),
+    );
+  };
 
-  const addGroup = () => {
-    setItems((prev) => [
+  /* ============================================================
+   UPDATE INGREDIENT — IDENTICO A edit/[id].tsx
+   ============================================================ */
+  const toggleActions = (id: string) => {
+    setExpandedActions((prev) => ({
       ...prev,
-      {
-        type: "group",
-        id: `group-${Date.now()}`,
-        title: "Nuovo gruppo",
-        collapsed: false,
-      },
-    ]);
+      [id]: !prev[id],
+    }));
+  };
+
+  const updateIngredient = (
+    ingredientId: string,
+    field: "name" | "quantity" | "unit",
+    value: string,
+  ) => {
+    setItems((prev) =>
+      prev.map((i) =>
+        i.type === "ingredient" && i.id === ingredientId
+          ? { ...i, [field]: value }
+          : i,
+      ),
+    );
   };
 
   const addIngredientToGroup = (groupId: string) => {
     setItems((prev) => {
-      const index = prev.findIndex(
+      // 1. Trova il gruppo
+      const groupIndex = prev.findIndex(
         (i) => i.type === "group" && i.id === groupId,
       );
-      if (index === -1) return prev;
+      if (groupIndex === -1) return prev;
+
+      // 2. Trova tutti gli ingredienti del gruppo
+      const groupIngredients = prev.filter(
+        (i) => i.type === "ingredient" && i.groupId === groupId,
+      );
+
+      // 3. Trova tutti gli altri elementi
+      const otherItems = prev.filter(
+        (i) => !(i.type === "ingredient" && i.groupId === groupId),
+      );
+
+      const group = prev[groupIndex];
 
       const newIngredient: IngredientFlat = {
         type: "ingredient",
@@ -227,9 +310,10 @@ export default function EditRecipeScreen() {
       };
 
       return [
-        ...prev.slice(0, index + 1),
-        newIngredient,
-        ...prev.slice(index + 1),
+        ...otherItems.slice(0, otherItems.indexOf(group) + 1),
+        ...groupIngredients,
+        newIngredient, // ⭐ SEMPRE IN FONDO
+        ...otherItems.slice(otherItems.indexOf(group) + 1),
       ];
     });
   };
@@ -277,14 +361,6 @@ export default function EditRecipeScreen() {
   const toggleIngredientSelection = (id: string) => {
     setSelectedForGroup((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  };
-
-  const detachIngredient = (id: string) => {
-    setItems((prev) =>
-      prev.map((i) =>
-        i.type === "ingredient" && i.id === id ? { ...i, groupId: null } : i,
-      ),
     );
   };
 
@@ -398,21 +474,6 @@ export default function EditRecipeScreen() {
     });
   };
 
-  const pickImageFromGallery = async (callback: (uri: string) => void) => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.9,
-      });
-
-      if (!result.canceled && result.assets?.length > 0) {
-        callback(result.assets[0].uri);
-      }
-    } catch (err) {
-      console.log("Errore selezione immagine:", err);
-    }
-  };
-
   const chooseImageSource = (onPick: (uri: string) => void) => {
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
@@ -470,144 +531,8 @@ export default function EditRecipeScreen() {
   };
 
   /* ============================================================
-   RENDER INGREDIENTE — DUE RIGHE + DRAG A DESTRA
-   ============================================================ */
-
-  const renderIngredient = (item: IngredientFlat, drag: () => void) => (
-    <View style={styles.ingredientCard}>
-      <View style={{ flex: 1 }}>
-        <View style={styles.ingredientRowTop}>
-          <TouchableOpacity onPress={() => removeIngredient(item.id)}>
-            <Ionicons name="trash-outline" size={20} color="#cb0047" />
-          </TouchableOpacity>
-
-          <Input
-            style={styles.ingName}
-            value={item.name}
-            placeholder="Ingrediente"
-            onChangeText={(t) =>
-              setItems((prev) =>
-                prev.map((i) =>
-                  i.id === item.id && i.type === "ingredient"
-                    ? { ...i, name: t }
-                    : i,
-                ),
-              )
-            }
-          />
-        </View>
-
-        <View style={styles.ingredientRowBottom}>
-          <Input
-            style={styles.ingQty}
-            value={item.quantity}
-            placeholder="Qtà"
-            onChangeText={(t) =>
-              setItems((prev) =>
-                prev.map((i) =>
-                  i.id === item.id && i.type === "ingredient"
-                    ? { ...i, quantity: t }
-                    : i,
-                ),
-              )
-            }
-          />
-
-          <Input
-            style={styles.ingUnit}
-            value={item.unit}
-            placeholder="Un."
-            onChangeText={(t) =>
-              setItems((prev) =>
-                prev.map((i) =>
-                  i.id === item.id && i.type === "ingredient"
-                    ? { ...i, unit: t }
-                    : i,
-                ),
-              )
-            }
-          />
-        </View>
-      </View>
-    </View>
-  );
-
-  /* ============================================================
-   RENDER GRUPPO — FOLDER TAB
-   ============================================================ */
-
-  const renderGroup = (group: GroupFlat) => (
-    <View style={styles.groupCardUnified}>
-      <View style={styles.groupFolderTab}>
-        <TouchableOpacity onPress={() => removeGroup(group.id)}>
-          <Ionicons name="trash-outline" size={20} color="#cb0047" />
-        </TouchableOpacity>
-
-        <Input
-          style={[
-            styles.groupTitleInputUnified,
-            { fontFamily: "Outfit-SemiBold" },
-          ]}
-          value={group.title}
-          placeholder="Nome gruppo"
-          onChangeText={(text) =>
-            setItems((prev) =>
-              prev.map((i) =>
-                i.type === "group" && i.id === group.id
-                  ? { ...i, title: text }
-                  : i,
-              ),
-            )
-          }
-        />
-
-        <TouchableOpacity onPress={() => toggleGroup(group.id)}>
-          <Ionicons
-            name={group.collapsed ? "chevron-down" : "chevron-up"}
-            size={22}
-            color={COLORS.primary}
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => addIngredientToGroup(group.id)}>
-          <Ionicons
-            name="add-circle-outline"
-            size={24}
-            color={COLORS.primary}
-          />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  /* ============================================================
    STEP — IMMAGINI
    ============================================================ */
-
-  const pickMainImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setMainImageUri(result.assets[0].uri);
-    }
-  };
-
-  const pickStepImage = async (index: number) => {
-    const uri = await pickImage();
-    if (!uri) return;
-
-    setSteps((prev) => {
-      const copy = [...prev];
-      copy[index].imageUri = uri; // ✔ foto del procedimento
-      return copy;
-    });
-  };
-
   const moveStepUp = (index: number) => {
     if (index === 0) return;
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -631,10 +556,6 @@ export default function EditRecipeScreen() {
   /* ============================================================
    STEP — FUNZIONI
    ============================================================ */
-
-  const addStepRow = () => {
-    setSteps([...steps, { description: "", title: "", imageUri: undefined }]);
-  };
 
   const removeStep = (index: number) => {
     if (steps.length === 1) return;
@@ -831,17 +752,9 @@ export default function EditRecipeScreen() {
     }
     if (!existingRecipe) return;
 
-    // ricostruisci struttura ingredients da lista piatta
-    const groups: {
-      id: string;
-      title: string;
-      items: { id: string; name: string; quantity: string; unit: string }[];
-    }[] = [];
+    const groups: IngredientGroup[] = [];
+    const free: IngredientItem[] = [];
 
-    const free: { id: string; name: string; quantity: string; unit: string }[] =
-      [];
-
-    // prima raccogli tutti i groupId in ordine
     const groupOrder = items.filter((i) => i.type === "group") as GroupFlat[];
 
     groupOrder.forEach((g) => {
@@ -860,6 +773,7 @@ export default function EditRecipeScreen() {
           name: ing.name,
           quantity: ing.quantity,
           unit: ing.unit,
+          linkedRecipeId: ing.linkedRecipeId || null,
         })),
       });
     });
@@ -876,11 +790,12 @@ export default function EditRecipeScreen() {
           name: i.name,
           quantity: i.quantity,
           unit: i.unit,
+          linkedRecipeId: i.linkedRecipeId || null,
         });
       }
     });
 
-    const finalIngredients =
+    const finalIngredients: IngredientGroup[] =
       free.length > 0
         ? [
             {
@@ -906,7 +821,7 @@ export default function EditRecipeScreen() {
         description: s.description,
         imageUri: s.imageUri,
         textImageUri: s.textImageUri, // ⭐ ORA VIENE SALVATA
-        mode: s.mode, // ⭐ AGGIUNTO
+        mode: s.mode || "text",
         checked: s.checked ?? false,
       }));
 
@@ -928,6 +843,7 @@ export default function EditRecipeScreen() {
       notes: {
         text: notesText.trim() || undefined,
         image: notesImage || null,
+        mode: notesMode || "text",
       },
       ingredientsMode,
       ingredientsOcrImage,
@@ -947,11 +863,11 @@ export default function EditRecipeScreen() {
       return;
     }
 
-    const newId = Date.now().toString();
+    const newId = `rec_${Date.now()}`;
 
-    // Ricostruisci ingredienti come in handleSave
-    const groups: any[] = [];
-    const free: any[] = [];
+    // --- RICOSTRUZIONE INGREDIENTI ---
+    const groups: IngredientGroup[] = [];
+    const free: IngredientItem[] = [];
 
     const groupOrder = items.filter((i) => i.type === "group") as GroupFlat[];
 
@@ -971,6 +887,7 @@ export default function EditRecipeScreen() {
           name: ing.name,
           quantity: ing.quantity,
           unit: ing.unit,
+          linkedRecipeId: ing.linkedRecipeId || null,
         })),
       });
     });
@@ -978,7 +895,7 @@ export default function EditRecipeScreen() {
     items.forEach((i) => {
       if (
         i.type === "ingredient" &&
-        i.groupId === null &&
+        (i as IngredientFlat).groupId === null &&
         i.name.trim() !== ""
       ) {
         free.push({
@@ -986,11 +903,12 @@ export default function EditRecipeScreen() {
           name: i.name,
           quantity: i.quantity,
           unit: i.unit,
+          linkedRecipeId: i.linkedRecipeId || null,
         });
       }
     });
 
-    const finalIngredients =
+    const finalIngredients: IngredientGroup[] =
       free.length > 0
         ? [
             {
@@ -1002,6 +920,7 @@ export default function EditRecipeScreen() {
           ]
         : groups;
 
+    // --- STEPS ---
     const cleanedSteps = steps
       .filter(
         (s) =>
@@ -1015,7 +934,8 @@ export default function EditRecipeScreen() {
         title: s.title,
         description: s.description,
         imageUri: s.imageUri,
-        textImageUri: s.textImageUri, // ⭐ ORA VIENE SALVATA
+        textImageUri: s.textImageUri,
+        mode: s.mode || "text",
         checked: false,
       }));
 
@@ -1037,18 +957,18 @@ export default function EditRecipeScreen() {
       steps: cleanedSteps,
       notes: {
         text: notesText.trim() || undefined,
-        image: notesImage || undefined,
+        image: notesImage || null,
         mode: notesMode || "text",
       },
       ingredientsMode,
       ingredientsOcrImage,
       ingredientsPhoto,
-
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
-    updateRecipe(newRecipe);
+    // ⭐ QUI È IL FIX
+    addRecipe(newRecipe);
 
     Alert.alert("Successo", "Ricetta salvata come nuova!");
     router.push(`/recipe/${newId}`);
@@ -1100,7 +1020,21 @@ export default function EditRecipeScreen() {
           onPress={() => chooseImageSource((uri) => setMainImageUri(uri))}
         >
           {mainImageUri ? (
-            <Image source={{ uri: mainImageUri }} style={styles.headerImage} />
+            <View>
+              {/* ❌ ELIMINA FOTO PRINCIPALE */}
+              <TouchableOpacity
+                onPress={() => setMainImageUri(null)}
+                style={styles.deleteMainSmallButton}
+              >
+                <Ionicons name="close" size={20} color="#cb0047" />
+              </TouchableOpacity>
+
+              <Image
+                source={{ uri: mainImageUri }}
+                style={styles.headerImage}
+                resizeMode="cover"
+              />
+            </View>
           ) : (
             <View style={styles.headerImage}>
               <View style={styles.headerPlaceholder}>
@@ -1167,125 +1101,45 @@ export default function EditRecipeScreen() {
           />
         </View>
 
-        {/* ============================================================
-             INGREDIENTI — COMPLETO
-        ============================================================ */}
-        <View style={[styles.card, { minHeight: 420 }]}>
+        {/* INGREDIENTI */}
+        <View style={[styles.secIngCard, { minHeight: 420 }]}>
           <Text variant="title" style={styles.sectionTitle}>
             Ingredienti
           </Text>
           <View style={[styles.separator, { width: 370, marginLeft: -20 }]} />
 
-          {/* ⭐ SIDEBAR GLOBALE A DESTRA */}
-          <View style={styles.ingredientsSideZone}>
-            {/* NUOVO */}
-            <TouchableOpacity
-              onPress={addFreeIngredient}
-              style={{ padding: 6, alignItems: "center" }}
-            >
-              <Ionicons
-                name="add-circle-outline"
-                size={20}
-                color={COLORS.primary}
+          {/* FOTO INGREDIENTI */}
+          {ingredientsPhoto && (
+            <View>
+              {/* ❌ ELIMINA FOTO INGREDIENTI */}
+              <TouchableOpacity
+                onPress={() => {
+                  setIngredientsPhoto(null);
+                  setIngredientsMode("text");
+                }}
+                style={styles.deleteIngSmallButton}
+              >
+                <Ionicons name="close" size={20} color="#cb0047" />
+              </TouchableOpacity>
+
+              <Image
+                source={{ uri: ingredientsPhoto }}
+                style={styles.ingImagePlaceholder}
+                resizeMode="cover"
               />
-              <Text bold style={{ fontSize: 11, color: COLORS.primary }}>
-                Nuovo
-              </Text>
-            </TouchableOpacity>
+            </View>
+          )}
 
-            <View style={styles.stepDivider}></View>
+          {/* OCR INGREDIENTI */}
+          {ingredientsOcrImage && (
+            <Image
+              source={{ uri: ingredientsOcrImage }}
+              style={styles.stepImagePlaceholder}
+            />
+          )}
 
-            {/* SVUOTA */}
-            <TouchableOpacity
-              onPress={() => setItems([])}
-              style={{ padding: 6, alignItems: "center" }}
-            >
-              <Ionicons name="trash-outline" size={20} color="#cb0047" />
-              <Text bold style={{ fontSize: 11, color: "#cb0047" }}>
-                Svuota
-              </Text>
-            </TouchableOpacity>
-
-            <View style={styles.stepDivider}></View>
-
-            {/* RAGGRUPPA */}
-            <TouchableOpacity
-              onPress={() => setGroupingMode((prev) => !prev)}
-              style={{
-                paddingVertical: 6,
-                paddingHorizontal: 4,
-                backgroundColor: groupingMode ? "#e8ddff" : "transparent",
-                borderRadius: 8,
-                alignItems: "center",
-              }}
-            >
-              <Ionicons
-                name="albums-outline"
-                size={20}
-                color={COLORS.primary}
-              />
-              <Text bold style={{ fontSize: 11, color: COLORS.primary }}>
-                Raggruppa
-              </Text>
-            </TouchableOpacity>
-
-            <View style={styles.stepDivider}></View>
-
-            {/* FOTO */}
-            <TouchableOpacity
-              onPress={() =>
-                setIngredientsMode(
-                  ingredientsMode === "photo" ? "text" : "photo",
-                )
-              }
-              style={{
-                paddingVertical: 6,
-                paddingHorizontal: 21,
-                backgroundColor:
-                  ingredientsMode === "photo" ? "#e8ddff" : "transparent",
-                borderRadius: 8,
-                alignItems: "center",
-              }}
-            >
-              <Ionicons
-                name="camera-outline"
-                size={20}
-                color={COLORS.primary}
-              />
-              <Text bold style={{ fontSize: 11, color: COLORS.primary }}>
-                Foto
-              </Text>
-            </TouchableOpacity>
-
-            <View style={styles.stepDivider}></View>
-
-            {/* OCR */}
-            <TouchableOpacity
-              onPress={() =>
-                setIngredientsMode(ingredientsMode === "ocr" ? "text" : "ocr")
-              }
-              style={{
-                paddingVertical: 6,
-                paddingHorizontal: 21,
-                backgroundColor:
-                  ingredientsMode === "ocr" ? "#e8ddff" : "transparent",
-                borderRadius: 8,
-                alignItems: "center",
-              }}
-            >
-              <Ionicons
-                name="document-text-outline"
-                size={20}
-                color={COLORS.primary}
-              />
-              <Text bold style={{ fontSize: 11, color: COLORS.primary }}>
-                OCR
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* ⭐ CONTENUTO INGREDIENTI */}
-          <ScrollView style={{ paddingRight: 90 }}>
+          {/* LISTA INGREDIENTI */}
+          <ScrollView style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
             {items.map((item, index) => {
               /* ============================================================
          GRUPPO
@@ -1299,190 +1153,207 @@ export default function EditRecipeScreen() {
                     (i as IngredientFlat).groupId === group.id,
                 );
 
-                const recapString = groupIngredients
-                  .map((i) => (i as IngredientFlat).name || "—")
-                  .join(", ");
-
                 return (
-                  <View key={group.id} style={styles.groupRow}>
-                    <View style={styles.groupCardUnified}>
-                      {/* LAYOUT A DUE COLONNE */}
-                      <View style={styles.groupInnerRow}>
-                        {/* SIDEBAR GRUPPO */}
-                        <View style={styles.groupSidebar}>
-                          <TouchableOpacity
-                            onPress={() => removeGroup(group.id)}
-                          >
-                            <Ionicons
-                              name="trash-outline"
-                              size={20}
-                              color="#cb0047"
-                            />
-                          </TouchableOpacity>
-                          <View
-                            style={[styles.stepDivider, { width: 50 }]}
-                          ></View>
+                  <View key={group.id} style={styles.groupCard}>
+                    {/* HEADER GRUPPO */}
+                    <View style={styles.groupHeader}>
+                      <Input
+                        style={styles.groupTitle}
+                        value={group.title}
+                        placeholder="Nome gruppo"
+                        onChangeText={(text) =>
+                          updateGroupTitle(group.id, text)
+                        }
+                      />
 
-                          <TouchableOpacity onPress={() => moveItemUp(index)}>
-                            <Ionicons
-                              name="caret-up"
-                              size={20}
-                              color={COLORS.primary}
-                            />
-                          </TouchableOpacity>
-                          <View
-                            style={[styles.stepDivider, { width: 50 }]}
-                          ></View>
+                      <TouchableOpacity onPress={() => toggleGroup(group.id)}>
+                        <Ionicons
+                          name={group.collapsed ? "chevron-down" : "chevron-up"}
+                          size={22}
+                          color={COLORS.primary}
+                        />
+                      </TouchableOpacity>
+                    </View>
 
-                          <TouchableOpacity onPress={() => moveItemDown(index)}>
-                            <Ionicons
-                              name="caret-down"
-                              size={20}
-                              color={COLORS.primary}
-                            />
-                          </TouchableOpacity>
-                          <View
-                            style={[styles.stepDivider, { width: 50 }]}
-                          ></View>
+                    {/* RECAP */}
+                    {group.collapsed && (
+                      <Text style={styles.groupRecap}>
+                        {groupIngredients
+                          .filter(
+                            (g): g is IngredientFlat => g.type === "ingredient",
+                          )
+                          .map((g) => g.name || "—")
+                          .join(", ")}
+                      </Text>
+                    )}
 
-                          <TouchableOpacity
-                            onPress={() => addIngredientToGroup(group.id)}
-                          >
-                            <Ionicons
-                              name="add-circle-outline"
-                              size={20}
-                              color={COLORS.primary}
-                            />
-                          </TouchableOpacity>
-                        </View>
+                    {/* INGREDIENTI DEL GRUPPO */}
+                    {!group.collapsed && (
+                      <View style={{ marginTop: 10 }}>
+                        {groupIngredients.map((ing) => {
+                          const ingItem = ing as IngredientFlat;
 
-                        <View style={styles.verticalDivider} />
+                          // ⭐ Index reale dentro items
+                          const realIndex = items.findIndex(
+                            (i) => i.id === ingItem.id,
+                          );
 
-                        {/* CONTENUTO GRUPPO */}
-                        <View style={styles.groupContent}>
-                          <View style={styles.groupFolderTab}>
-                            <Input
-                              style={styles.groupTitleInputUnified}
-                              value={group.title}
-                              placeholder="Nome gruppo"
-                              onChangeText={(text) =>
-                                setItems((prev) =>
-                                  prev.map((i) =>
-                                    i.type === "group" && i.id === group.id
-                                      ? { ...i, title: text }
-                                      : i,
-                                  ),
-                                )
-                              }
-                            />
+                          return (
+                            <View key={ingItem.id} style={styles.groupIngCard}>
+                              {/* RIGA PRINCIPALE */}
+                              <View style={styles.ingRow}>
+                                <Input
+                                  style={styles.ingName}
+                                  value={ingItem.name}
+                                  placeholder="Ingrediente"
+                                  multiline
+                                  onChangeText={(t) =>
+                                    updateIngredient(ingItem.id, "name", t)
+                                  }
+                                />
 
-                            <TouchableOpacity
-                              onPress={() => toggleGroup(group.id)}
-                            >
-                              <Ionicons
-                                name={
-                                  group.collapsed
-                                    ? "chevron-down"
-                                    : "chevron-up"
-                                }
-                                size={20}
-                                color={COLORS.primary}
-                              />
-                            </TouchableOpacity>
-                          </View>
+                                <Input
+                                  style={styles.ingQty}
+                                  value={ingItem.quantity}
+                                  placeholder="Qtà"
+                                  multiline
+                                  onChangeText={(t) =>
+                                    updateIngredient(ingItem.id, "quantity", t)
+                                  }
+                                />
 
-                          {/* RECAP */}
-                          {group.collapsed && (
-                            <Text style={styles.groupRecap}>{recapString}</Text>
-                          )}
+                                <Input
+                                  style={styles.ingUnit}
+                                  value={ingItem.unit}
+                                  placeholder="Un."
+                                  multiline
+                                  onChangeText={(t) =>
+                                    updateIngredient(ingItem.id, "unit", t)
+                                  }
+                                />
 
-                          {/* INGREDIENTI NEL GRUPPO */}
-                          {!group.collapsed && (
-                            <View style={styles.groupItemsContainer}>
-                              {groupIngredients.map((ing) => {
-                                const ingItem = ing as IngredientFlat;
+                                {/* ⭐ TOGGLE MENU */}
+                                <TouchableOpacity
+                                  onPress={() => toggleActions(ingItem.id)}
+                                >
+                                  <Ionicons
+                                    name="ellipsis-vertical"
+                                    size={20}
+                                    color={COLORS.primary}
+                                  />
+                                </TouchableOpacity>
+                              </View>
 
-                                return (
-                                  <View
-                                    key={ingItem.id}
-                                    style={styles.groupIngredientCard}
+                              {/* ⭐ CHECKBOX RAGGRUPPAMENTO */}
+                              {groupingMode && (
+                                <View style={styles.ingCheckboxRow}>
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      toggleIngredientSelection(ingItem.id)
+                                    }
+                                    style={[
+                                      styles.checkbox,
+                                      selectedForGroup.includes(ingItem.id)
+                                        ? styles.checkboxSelected
+                                        : styles.checkboxUnselected,
+                                    ]}
                                   >
-                                    <View style={styles.groupIngredientHeader}>
-                                      <Input
-                                        style={styles.ingGroupName}
-                                        value={ingItem.name}
-                                        placeholder="Ingrediente"
-                                        onChangeText={(t) =>
-                                          setItems((prev) =>
-                                            prev.map((i) =>
-                                              i.id === ingItem.id
-                                                ? { ...i, name: t }
-                                                : i,
-                                            ),
-                                          )
-                                        }
+                                    {selectedForGroup.includes(ingItem.id) && (
+                                      <Ionicons
+                                        name="checkmark"
+                                        size={18}
+                                        color="#fff"
                                       />
+                                    )}
+                                  </TouchableOpacity>
+                                </View>
+                              )}
 
-                                      {/* X PER ELIMINARE */}
-                                      <TouchableOpacity
-                                        onPress={() =>
-                                          removeIngredient(ingItem.id)
-                                        }
-                                        style={styles.groupIngredientDeleteBtn}
-                                      >
-                                        <Ionicons
-                                          name="close"
-                                          size={18}
-                                          color="#cb0047"
-                                        />
-                                      </TouchableOpacity>
-                                    </View>
+                              {/* ⭐ FOOTER PULSANTI */}
+                              {expandedActions[ingItem.id] && (
+                                <View style={styles.ingFooter}>
+                                  <TouchableOpacity
+                                    onPress={() => removeIngredient(ingItem.id)}
+                                  >
+                                    <Ionicons
+                                      name="trash-outline"
+                                      size={20}
+                                      color="#cb0047"
+                                    />
+                                  </TouchableOpacity>
 
-                                    <View style={styles.ingredientRowBottom}>
-                                      <Input
-                                        style={styles.ingGroupQty}
-                                        value={ingItem.quantity}
-                                        placeholder="Qtà"
-                                        onChangeText={(t) =>
-                                          setItems((prev) =>
-                                            prev.map((i) =>
-                                              i.id === ingItem.id
-                                                ? { ...i, quantity: t }
-                                                : i,
-                                            ),
-                                          )
-                                        }
-                                      />
+                                  <TouchableOpacity
+                                    onPress={() => openRecipePicker(ingItem.id)}
+                                  >
+                                    <Ionicons
+                                      name="link-outline"
+                                      size={22}
+                                      color={COLORS.primary}
+                                    />
+                                  </TouchableOpacity>
 
-                                      <Input
-                                        style={styles.ingGroupUnit}
-                                        value={ingItem.unit}
-                                        placeholder="Un."
-                                        onChangeText={(t) =>
-                                          setItems((prev) =>
-                                            prev.map((i) =>
-                                              i.id === ingItem.id
-                                                ? { ...i, unit: t }
-                                                : i,
-                                            ),
-                                          )
-                                        }
-                                      />
-                                    </View>
+                                  <TouchableOpacity
+                                    onPress={() => moveItemUp(realIndex)}
+                                  >
+                                    <Ionicons
+                                      name="caret-up"
+                                      size={22}
+                                      color={COLORS.primary}
+                                    />
+                                  </TouchableOpacity>
 
-                                    <View
-                                      style={[
-                                        styles.stepDivider,
-                                        { width: 250, marginLeft: -10 },
-                                      ]}
-                                    ></View>
-                                  </View>
-                                );
-                              })}
+                                  <TouchableOpacity
+                                    onPress={() => moveItemDown(realIndex)}
+                                  >
+                                    <Ionicons
+                                      name="caret-down"
+                                      size={22}
+                                      color={COLORS.primary}
+                                    />
+                                  </TouchableOpacity>
+                                </View>
+                              )}
                             </View>
-                          )}
-                        </View>
+                          );
+                        })}
                       </View>
+                    )}
+
+                    {/* FOOTER GRUPPO */}
+                    <View style={styles.groupFooter}>
+                      <TouchableOpacity onPress={() => removeGroup(group.id)}>
+                        <Ionicons
+                          name="trash-outline"
+                          size={22}
+                          color="#cb0047"
+                        />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity onPress={() => moveItemUp(index)}>
+                        <Ionicons
+                          name="caret-up"
+                          size={22}
+                          color={COLORS.primary}
+                        />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity onPress={() => moveItemDown(index)}>
+                        <Ionicons
+                          name="caret-down"
+                          size={22}
+                          color={COLORS.primary}
+                        />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => addIngredientToGroup(group.id)}
+                      >
+                        <Ionicons
+                          name="add-circle-outline"
+                          size={22}
+                          color={COLORS.primary}
+                        />
+                      </TouchableOpacity>
                     </View>
                   </View>
                 );
@@ -1494,122 +1365,114 @@ export default function EditRecipeScreen() {
               const ing = item as IngredientFlat;
               if (ing.groupId) return null;
 
+              const realIndex = items.findIndex((i) => i.id === ing.id);
+
               return (
-                <View key={ing.id} style={styles.ingredientRow}>
-                  <View style={styles.ingredientCard}>
-                    <View style={styles.ingredientInnerRow}>
-                      {/* SIDEBAR INGREDIENTE */}
-                      <View
-                        style={[styles.ingredientSidebar, { marginLeft: 4 }]}
-                      >
-                        <TouchableOpacity
-                          onPress={() => removeIngredient(ing.id)}
-                        >
-                          <Ionicons
-                            name="trash-outline"
-                            size={20}
-                            color="#cb0047"
-                          />
-                        </TouchableOpacity>
-                        <View
-                          style={[styles.stepDivider, { width: 50 }]}
-                        ></View>
+                <View key={ing.id} style={styles.ingCard}>
+                  {/* RIGA PRINCIPALE */}
+                  <View style={styles.ingRow}>
+                    <Input
+                      style={styles.ingName}
+                      value={ing.name}
+                      placeholder="Ingrediente"
+                      multiline
+                      onChangeText={(t) => updateIngredient(ing.id, "name", t)}
+                    />
 
-                        <TouchableOpacity onPress={() => moveItemUp(index)}>
-                          <Ionicons
-                            name="caret-up"
-                            size={20}
-                            color={COLORS.primary}
-                          />
-                        </TouchableOpacity>
-                        <View
-                          style={[styles.stepDivider, { width: 50 }]}
-                        ></View>
+                    <Input
+                      style={styles.ingQty}
+                      value={ing.quantity}
+                      placeholder="Qtà"
+                      multiline
+                      onChangeText={(t) =>
+                        updateIngredient(ing.id, "quantity", t)
+                      }
+                    />
 
-                        <TouchableOpacity onPress={() => moveItemDown(index)}>
-                          <Ionicons
-                            name="caret-down"
-                            size={20}
-                            color={COLORS.primary}
-                          />
-                        </TouchableOpacity>
-                      </View>
+                    <Input
+                      style={styles.ingUnit}
+                      value={ing.unit}
+                      placeholder="Un."
+                      multiline
+                      onChangeText={(t) => updateIngredient(ing.id, "unit", t)}
+                    />
 
-                      <View style={styles.verticalDivider} />
-
-                      {/* CONTENUTO */}
-                      <View style={styles.ingredientContent}>
-                        <Input
-                          style={styles.ingName}
-                          value={ing.name}
-                          placeholder="Ingrediente"
-                          onChangeText={(t) =>
-                            setItems((prev) =>
-                              prev.map((i) =>
-                                i.id === ing.id ? { ...i, name: t } : i,
-                              ),
-                            )
-                          }
-                        />
-
-                        <View style={styles.ingredientRowBottom}>
-                          <Input
-                            style={styles.ingQty}
-                            value={ing.quantity}
-                            placeholder="Qtà"
-                            onChangeText={(t) =>
-                              setItems((prev) =>
-                                prev.map((i) =>
-                                  i.id === ing.id ? { ...i, quantity: t } : i,
-                                ),
-                              )
-                            }
-                          />
-
-                          <Input
-                            style={styles.ingUnit}
-                            value={ing.unit}
-                            placeholder="Un."
-                            onChangeText={(t) =>
-                              setItems((prev) =>
-                                prev.map((i) =>
-                                  i.id === ing.id ? { ...i, unit: t } : i,
-                                ),
-                              )
-                            }
-                          />
-                          {groupingMode && (
-                            <TouchableOpacity
-                              onPress={() => toggleIngredientSelection(ing.id)}
-                              style={[
-                                styles.checkbox,
-                                selectedForGroup.includes(ing.id)
-                                  ? styles.checkboxSelected
-                                  : styles.checkboxUnselected,
-                              ]}
-                            >
-                              {selectedForGroup.includes(ing.id) && (
-                                <Ionicons
-                                  name="checkmark"
-                                  size={20}
-                                  color={"#ffffff"}
-                                />
-                              )}
-                            </TouchableOpacity>
-                          )}
-                          <View
-                            style={[
-                              styles.separator,
-                              { marginTop: 30, marginBottom: 20 },
-                            ]}
-                          />
-                        </View>
-                      </View>
-                    </View>
+                    {/* ⭐ TOGGLE MENU */}
+                    <TouchableOpacity
+                      style={styles.freeIngMenuToggle}
+                      onPress={() => toggleActions(ing.id)}
+                    >
+                      <Ionicons
+                        name="ellipsis-vertical"
+                        size={20}
+                        color={COLORS.primary}
+                      />
+                    </TouchableOpacity>
                   </View>
+
+                  {/* ⭐ CHECKBOX RAGGRUPPAMENTO */}
+                  {groupingMode && (
+                    <View style={styles.ingCheckboxRow}>
+                      <TouchableOpacity
+                        onPress={() => toggleIngredientSelection(ing.id)}
+                        style={[
+                          styles.checkbox,
+                          selectedForGroup.includes(ing.id)
+                            ? styles.checkboxSelected
+                            : styles.checkboxUnselected,
+                        ]}
+                      >
+                        {selectedForGroup.includes(ing.id) && (
+                          <Ionicons name="checkmark" size={18} color="#fff" />
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* ⭐ FOOTER PULSANTI */}
+                  {expandedActions[ing.id] && (
+                    <View style={styles.ingFooter}>
+                      <TouchableOpacity
+                        onPress={() => removeIngredient(ing.id)}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={22}
+                          color="#cb0047"
+                        />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => openRecipePicker(ing.id)}
+                      >
+                        <Ionicons
+                          name="link-outline"
+                          size={22}
+                          color={COLORS.primary}
+                        />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity onPress={() => moveItemUp(realIndex)}>
+                        <Ionicons
+                          name="caret-up"
+                          size={22}
+                          color={COLORS.primary}
+                        />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity onPress={() => moveItemDown(realIndex)}>
+                        <Ionicons
+                          name="caret-down"
+                          size={22}
+                          color={COLORS.primary}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               );
             })}
+
             {/* CREA GRUPPO */}
             {groupingMode && (
               <TouchableOpacity
@@ -1627,13 +1490,11 @@ export default function EditRecipeScreen() {
               <View style={{ marginTop: 20 }}>
                 <Text
                   variant="small"
-                  style={{
-                    marginBottom: 10,
-                    textAlign: "center",
-                  }}
+                  style={{ marginBottom: 10, textAlign: "center" }}
                 >
                   oppure
                 </Text>
+
                 <Text
                   bold
                   style={{
@@ -1660,138 +1521,148 @@ export default function EditRecipeScreen() {
               </View>
             )}
 
-            {/* OCR */}
+            {/* FOTO / OCR */}
             {ingredientsMode === "ocr" && (
-              <View>
-                <View
-                  style={{
-                    width: 250,
-                    marginBottom: 10,
-                    marginLeft: 10,
-                  }}
-                >
-                  <Text variant="small">
-                    Scatta una foto o scegli dalla galleria la foto del testo
-                    degli ingredienti per ottenere la trascrizione automatica
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    flexDirection: "column",
-                    marginTop: 10,
-                    gap: 10,
-                    marginLeft: 10,
-                    marginBottom: 10,
-                  }}
-                >
-                  <OCRButton
-                    label="Scatta foto del testo"
-                    icon="camera-outline"
-                    onPress={handlePhotoIngredients}
-                  />
-
-                  <OCRButton
-                    label="Scegli da galleria"
-                    icon="image-outline"
-                    onPress={() =>
-                      chooseImageSource((uri) => {
-                        setIngredientsPhoto(uri);
-                        setIngredientsMode("photo");
-                      })
-                    }
-                  />
-
-                  {ingredientsOcrImage && (
-                    <View>
-                      {/* ❌ ELIMINA IMMAGINE OCR INGREDIENTI */}
-                      <TouchableOpacity
-                        onPress={() => {
-                          setIngredientsOcrImage(null);
-                          setIngredientsMode("text");
-                        }}
-                        style={styles.deleteSmallButton}
-                      >
-                        <Ionicons name="close" size={20} color="#cb0047" />
-                      </TouchableOpacity>
-
-                      <Image
-                        source={{ uri: ingredientsOcrImage }}
-                        style={styles.stepImagePlaceholder}
-                      />
-                    </View>
-                  )}
-                </View>
+              <View style={{ gap: 12 }}>
+                <OCRButton
+                  label="Scatta foto del testo"
+                  icon="camera-outline"
+                  onPress={handlePhotoIngredients}
+                />
+                <OCRButton
+                  label="Scegli da galleria"
+                  icon="image-outline"
+                  onPress={() =>
+                    chooseImageSource((uri) => {
+                      setIngredientsPhoto(uri);
+                      setIngredientsMode("photo");
+                    })
+                  }
+                />
               </View>
             )}
 
-            {/* FOTO */}
             {ingredientsMode === "photo" && (
-              <View>
-                <View
-                  style={{
-                    width: 250,
-                    marginBottom: 10,
-                    marginLeft: 10,
-                  }}
-                >
-                  <Text variant="small">
-                    Scatta una foto o scegli dalla galleria la foto del testo
-                    degli ingredienti per conservarla in formato fotografico
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    flexDirection: "column",
-                    marginTop: 10,
-                    gap: 10,
-                    marginLeft: 10,
-                    marginBottom: 10,
-                  }}
-                >
-                  <OCRButton
-                    label="Scatta foto del testo"
-                    icon="camera-outline"
-                    onPress={handlePhotoIngredients}
-                  />
-                  <OCRButton
-                    label="Scegli da galleria"
-                    icon="image-outline"
-                    onPress={() =>
-                      chooseImageSource((uri) => {
-                        setIngredientsPhoto(uri);
-                        setIngredientsMode("photo");
-                      })
-                    }
-                  />
-
-                  {ingredientsPhoto && (
-                    <View>
-                      {/* ❌ ELIMINA FOTO INGREDIENTI */}
-                      <TouchableOpacity
-                        onPress={() => {
-                          setIngredientsPhoto(null);
-                          setIngredientsMode("text");
-                        }}
-                        style={styles.deleteSmallButton}
-                      >
-                        <Ionicons name="close" size={20} color="#cb0047" />
-                      </TouchableOpacity>
-
-                      <Image
-                        source={{ uri: ingredientsPhoto }}
-                        style={styles.ingImagePlaceholder}
-                      />
-                    </View>
-                  )}
-                </View>
+              <View style={{ gap: 12 }}>
+                <OCRButton
+                  label="Scatta foto del testo"
+                  icon="camera-outline"
+                  onPress={handlePhotoIngredients}
+                />
+                <OCRButton
+                  label="Scegli da galleria"
+                  icon="image-outline"
+                  onPress={() =>
+                    chooseImageSource((uri) => {
+                      setIngredientsPhoto(uri);
+                      setIngredientsMode("photo");
+                    })
+                  }
+                />
               </View>
             )}
           </ScrollView>
+
+          {/* FOOTER SEZIONE */}
+          <View style={styles.ingredientsFooter}>
+            <TouchableOpacity
+              onPress={addFreeIngredient}
+              style={styles.footerBtn}
+            >
+              <Ionicons
+                name="add-circle-outline"
+                size={20}
+                color={COLORS.primary}
+              />
+              <Text bold style={styles.footerLabel}>
+                Nuovo
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setItems([])}
+              style={styles.footerBtn}
+            >
+              <Ionicons name="trash-outline" size={20} color="#cb0047" />
+              <Text bold style={[styles.footerLabel, { color: "#cb0047" }]}>
+                Svuota
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setGroupingMode((prev) => !prev)}
+              style={[
+                styles.footerBtn,
+                groupingMode && {
+                  backgroundColor: "#e8ddff",
+                  borderRadius: 8,
+                  paddingVertical: 2,
+                },
+              ]}
+            >
+              <Ionicons
+                name="albums-outline"
+                size={20}
+                color={COLORS.primary}
+              />
+              <Text bold style={styles.footerLabel}>
+                Raggruppa
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() =>
+                setIngredientsMode(
+                  ingredientsMode === "photo" ? "text" : "photo",
+                )
+              }
+              style={[
+                styles.footerBtn,
+                ingredientsMode === "photo" && {
+                  backgroundColor: "#e8ddff",
+                  borderRadius: 8,
+                  paddingVertical: 2,
+                  paddingHorizontal: 10,
+                },
+              ]}
+            >
+              <Ionicons
+                name="camera-outline"
+                size={20}
+                color={COLORS.primary}
+              />
+              <Text bold style={styles.footerLabel}>
+                Foto
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() =>
+                setIngredientsMode(ingredientsMode === "ocr" ? "text" : "ocr")
+              }
+              style={[
+                styles.footerBtn,
+                ingredientsMode === "ocr" && {
+                  backgroundColor: "#e8ddff",
+                  borderRadius: 8,
+                  paddingVertical: 2,
+                  paddingHorizontal: 10,
+                },
+              ]}
+            >
+              <Ionicons
+                name="document-text-outline"
+                size={20}
+                color={COLORS.primary}
+              />
+              <Text bold style={styles.footerLabel}>
+                OCR
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* ============================================================
-   PROCEDIMENTO — VERSIONE UNIFICATA (come add.tsx)
-============================================================ */}
+        {/* PROCEDIMENTO */}
         <View style={styles.procedimentoContainer}>
           {/* TITOLO */}
           <View
@@ -2563,6 +2434,58 @@ export default function EditRecipeScreen() {
             </View>
           </View>
         )}
+        <Modal visible={isPickerOpen} animationType="slide" transparent={false}>
+          <SafeAreaView
+            style={{
+              flex: 1,
+              padding: 20,
+              marginTop: 50,
+            }}
+          >
+            <Text
+              bold
+              style={{
+                fontSize: 22,
+                marginTop: 20,
+                marginBottom: 30,
+                textAlign: "center",
+              }}
+            >
+              Collega una ricetta
+            </Text>
+
+            <ScrollView>
+              {recipes.map((r) => (
+                <TouchableOpacity
+                  key={r.id}
+                  onPress={() => selectLinkedRecipe(r.id)}
+                  style={{
+                    paddingVertical: 14,
+                    borderBottomWidth: 1,
+                    borderColor: "#ddd",
+                  }}
+                >
+                  <Text style={{ fontSize: 18 }}>{r.title}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              onPress={closeRecipePicker}
+              style={{
+                marginTop: 20,
+                padding: 14,
+                backgroundColor: COLORS.primary,
+                borderRadius: 8,
+                alignItems: "center",
+              }}
+            >
+              <Text bold style={{ fontSize: 16, color: "white" }}>
+                Annulla
+              </Text>
+            </TouchableOpacity>
+          </SafeAreaView>
+        </Modal>
       </ScrollView>
     </SafeAreaView>
   );
@@ -2772,81 +2695,148 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
 
-  /* ============================================================
-   STILI UNIFICATI PER INGREDIENTI (ADD + EDIT)
-============================================================ */
-
-  ingredientsSideZone: {
-    marginTop: 75,
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    right: 0,
-    width: 75,
-    backgroundColor: "white",
-    borderLeftWidth: 1,
-    borderLeftColor: "#eee",
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "flex-start",
-    zIndex: 10,
-    marginBottom: 30,
-  },
-
   /* ====== INGREDIENTI LIBERI ====== */
 
-  ingredientCard: {
-    flex: 1,
+  secIngCard: {
     backgroundColor: "white",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    padding: 12,
-    paddingTop: 14,
-    paddingRight: 12,
+    marginHorizontal: 16,
+    marginBottom: 24,
+    paddingVertical: 18,
+    paddingHorizontal: 5,
+    borderRadius: 18,
     shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    minWidth: 250,
-    maxWidth: 250,
-    minHeight: 185,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.05)",
   },
 
-  ingredientInnerRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
+  ingCard: {
+    width: "100%",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#e5e5e5",
   },
 
-  ingredientHeaderRow: {
+  groupCard: {
+    width: "100%",
+    paddingHorizontal: 5,
+    paddingVertical: 12,
+    backgroundColor: "#f2f2ff",
+    borderRadius: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#dcdcff",
+  },
+
+  groupHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
+    justifyContent: "center",
+    textAlign: "center",
   },
 
-  /* CHECKBOX */
+  groupTitle: {
+    flex: 1,
+    minWidth: 180,
+    marginRight: 5,
+    textAlign: "center",
+    fontFamily: "Outfit-SemiBold",
+  },
+
+  groupRecap: {
+    fontSize: 13,
+    color: "#666",
+    marginTop: 4,
+    marginBottom: 15,
+    marginLeft: 15,
+    marginRight: 15,
+  },
+
+  groupIngredientHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+  },
+
+  groupIngCard: {
+    width: "100%",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#e5e5e5",
+  },
+
+  ingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  ingName: {
+    minWidth: 120,
+    maxWidth: 120,
+    borderColor: "#ffffff",
+    borderBottomRightRadius: 0,
+    borderTopRightRadius: 0,
+    marginLeft: -10,
+    marginBottom: -20,
+    marginTop: -10,
+  },
+
+  ingQty: {
+    minWidth: 70,
+    maxWidth: 70,
+    borderColor: "#ffffff",
+    borderBottomRightRadius: 0,
+    borderTopRightRadius: 0,
+    borderBottomLeftRadius: 0,
+    borderTopLeftRadius: 0,
+    marginLeft: -10,
+    marginBottom: -20,
+    marginTop: -10,
+  },
+
+  ingUnit: {
+    minWidth: 90,
+    maxWidth: 90,
+    borderColor: "#ffffff",
+    borderBottomLeftRadius: 0,
+    borderTopLeftRadius: 0,
+    marginLeft: -10,
+    marginBottom: -20,
+    marginTop: -10,
+  },
+
+  ingFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#ddd",
+  },
+
+  ingCheckboxRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 10,
+    marginRight: 5,
+  },
+
   checkbox: {
-    width: 28,
-    height: 28,
+    width: 24,
+    height: 24,
     borderRadius: 6,
     justifyContent: "center",
     alignItems: "center",
-    position: "absolute",
-    bottom: -15,
-    right: 0,
-  },
-
-  ingredientRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 16,
-  },
-
-  checkboxUnselected: {
-    backgroundColor: "white",
-    borderWidth: 2,
-    borderColor: "#ccc",
   },
 
   checkboxSelected: {
@@ -2855,192 +2845,52 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
   },
 
-  ingredientButtons: {
+  checkboxUnselected: {
+    backgroundColor: "transparent",
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+  },
+
+  groupFooter: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-
-  ingredientSidebar: {
-    width: 30,
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    gap: 10,
-    marginTop: 5,
-  },
-
-  ingredientContent: {
-    flex: 1,
-  },
-
-  /* INPUT NOME (100% larghezza, maxWidth) */
-  ingName: {
-    flex: 1,
-    minWidth: 0,
-    maxWidth: 300,
-    width: "100%",
-    fontSize: 16,
-    marginBottom: -5,
-  },
-
-  /* QTÀ (30%) */
-  ingQty: {
-    flex: 0.3,
-    minWidth: 90,
-    maxWidth: 90,
-    textAlign: "center",
-    fontSize: 16,
-    marginBottom: 15,
-  },
-
-  /* UNITÀ (70%) */
-  ingUnit: {
-    flex: 0.7,
-    minWidth: 70,
-    maxWidth: 70,
-    textAlign: "center",
-    fontSize: 16,
-    marginBottom: 15,
-  },
-
-  ingredientRowBottom: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 4,
-  },
-
-  /* ====== GRUPPI ====== */
-
-  groupCardUnified: {
-    flex: 1,
-    backgroundColor: "white",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e0d7ff",
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    minWidth: 250,
-    maxWidth: 250,
-  },
-
-  groupInnerRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-
-  ingGroupName: {
-    flex: 1,
-    minWidth: 150,
-    maxWidth: 150,
-    width: "100%",
-    fontSize: 16,
-    marginBottom: -5,
-  },
-  ingGroupQty: {
-    flex: 0.3,
-    minWidth: 80,
-    maxWidth: 80,
-    textAlign: "center",
-    fontSize: 16,
-  },
-  ingGroupUnit: {
-    flex: 0.7,
-    minWidth: 80,
-    maxWidth: 80,
-    textAlign: "center",
-    fontSize: 16,
-  },
-
-  verticalDivider: {
-    width: 1,
-    backgroundColor: "#e0e0e0",
-    height: "100%",
+    justifyContent: "space-between",
+    paddingTop: 12,
     marginHorizontal: 10,
-    marginBottom: 10,
   },
 
-  groupRow: {
+  ingredientsFooter: {
     flexDirection: "row",
-    marginBottom: 20,
-  },
-  groupSidebar: {
-    width: 35,
-    flexDirection: "column",
-    alignItems: "center",
     justifyContent: "space-around",
-    marginLeft: 5,
-    marginTop: 15,
-    marginBottom: 15,
-    gap: 10,
-  },
-
-  groupContent: {
-    flex: 1,
-    gap: 10,
-  },
-
-  groupFolderTab: {
-    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#f0e8ff",
-    padding: 10,
-    paddingBottom: -10,
-    marginLeft: -10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#ddd",
   },
 
-  groupTitleInputUnified: {
-    flex: 1,
-    fontSize: 17,
-    minWidth: 150,
-    maxWidth: 160,
-  },
-
-  groupRecap: {
-    fontSize: 13,
-    color: "#666",
-    marginTop: 4,
-    marginBottom: 8,
-    marginLeft: 4,
-    marginRight: 4,
-  },
-
-  groupItemsContainer: {
-    paddingRight: 10,
-    gap: 6,
-  },
-
-  /* ====== INGREDIENTI DENTRO I GRUPPI ====== */
-
-  groupIngredientCard: {
-    backgroundColor: "white",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgb(255, 255, 255)",
-    paddingVertical: 12,
-    flexDirection: "column",
-    marginTop: -10,
-    marginBottom: -10,
-  },
-
-  groupIngredientHeader: {
-    flexDirection: "row",
+  footerBtn: {
     alignItems: "center",
-    justifyContent: "space-between",
+    paddingHorizontal: 6,
   },
 
-  groupIngredientDeleteBtn: {
-    padding: 4,
-    marginLeft: 6,
+  footerLabel: {
+    fontSize: 11,
+    color: COLORS.primary,
+    marginTop: 2,
   },
 
-  sideBtn: {
-    paddingVertical: 2,
+  createGroupButton: {
+    backgroundColor: COLORS.primary,
+    padding: 14,
+    borderRadius: 12,
+    marginTop: 10,
+    alignItems: "center",
+    width: "100%",
+  },
+
+  createGroupButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
   },
 
   existingGroupButton: {
@@ -3050,22 +2900,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e0d7ff",
     marginBottom: 10,
-    width: 250,
+    width: "100%",
   },
 
-  createGroupButton: {
-    backgroundColor: COLORS.primary,
-    padding: 14,
-    borderRadius: 12,
-    marginTop: 10,
-    alignItems: "center",
-    width: 250,
-  },
-
-  createGroupButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
+  verticalDivider: {
+    width: 1,
+    backgroundColor: "#e0e0e0",
+    height: "100%",
+    marginHorizontal: 10,
+    marginBottom: 10,
   },
 
   procedimentoContainer: {
@@ -3155,7 +2998,7 @@ const styles = StyleSheet.create({
   },
 
   ingImagePlaceholder: {
-    width: 250,
+    width: "90%",
     height: 300,
     borderRadius: 14,
     backgroundColor: "#f3f3f3",
@@ -3164,6 +3007,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#ddd",
     marginBottom: 10,
+    marginLeft: 16,
+    marginRight: 16,
   },
 
   stepImageText: {
@@ -3287,8 +3132,8 @@ const styles = StyleSheet.create({
 
   deleteSmallButton: {
     position: "absolute",
-    top: -10,
-    right: -10,
+    top: -5,
+    right: -5,
     zIndex: 20,
     backgroundColor: "white",
     borderRadius: 20,
@@ -3297,5 +3142,37 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 3,
+  },
+
+  deleteIngSmallButton: {
+    position: "absolute",
+    top: -5,
+    right: 5,
+    zIndex: 20,
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  deleteMainSmallButton: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    zIndex: 20,
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  freeIngMenuToggle: {
+    marginLeft: 10,
   },
 });

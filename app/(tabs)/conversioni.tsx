@@ -1421,6 +1421,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: "center",
     width: "100%",
+    borderColor: "white",
   },
 
   pillContainer: {
@@ -1578,7 +1579,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "#ffffff",
     borderRadius: 10,
     paddingHorizontal: 10,
     backgroundColor: "#fff",

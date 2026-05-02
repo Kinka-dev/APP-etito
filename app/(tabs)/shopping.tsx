@@ -364,12 +364,6 @@ export default function ShoppingScreen() {
               <Ionicons name="trash-outline" size={20} color="#cb0047" />
             </TouchableOpacity>
           )}
-
-          {item.isNew && (
-            <TouchableOpacity onPress={() => startVoiceInput(index)}>
-              <Ionicons name="mic-outline" size={22} color={COLORS.primary} />
-            </TouchableOpacity>
-          )}
         </View>
 
         {/* FRECCE SU/GIÙ */}
