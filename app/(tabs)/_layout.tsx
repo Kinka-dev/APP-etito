@@ -16,6 +16,10 @@ export default function TabLayout() {
           borderTopColor: "#eee",
         },
         headerShown: false,
+        tabBarLabelStyle: {
+          fontFamily: "Outfit-Medium", // ← usa il tuo font
+          fontSize: 10,
+        },
       }}
     >
       <Tabs.Screen
@@ -24,15 +28,6 @@ export default function TabLayout() {
           title: "Ricette",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="book-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="add"
-        options={{
-          title: "Aggiungi",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="add-outline" size={size + 6} color={color} />
           ),
         }}
       />
@@ -72,11 +67,11 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="favorites"
+        name="calorie"
         options={{
-          title: "Preferiti",
+          title: "Calorie",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="heart-outline" size={size} color={color} />
+            <Ionicons name="flame-outline" size={size} color={color} />
           ),
         }}
       />

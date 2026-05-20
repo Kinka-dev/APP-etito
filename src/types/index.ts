@@ -13,7 +13,11 @@ export type IngredientItem = {
   name: string;
   quantity: string;
   unit: string;
-  linkedRecipeId?: string | null; // ⭐ AGGIUNTO
+  linkedRecipeId?: string | null;
+  kcal?: number;
+  carbs?: number;
+  protein?: number;
+  fat?: number;
 };
 
 export type IngredientGroup = {
@@ -29,7 +33,7 @@ export interface Step {
   checked: boolean;
   title: string;
   textImageUri?: string | null;
-  mode: "text" | "ocr" | "photo";
+  collapsed?: boolean;
 }
 
 export interface Recipe {
@@ -49,26 +53,32 @@ export interface Recipe {
     mode?: "text" | "ocr" | "photo";
   };
   ingredientsMode?: "text" | "ocr" | "photo";
-  ingredientsOcrImage?: string | null;
   ingredientsPhoto?: string | null;
-
   createdAt: string;
   updatedAt?: string;
+  caloriesTotal?: number;
+  caloriesPerServing?: number;
+  carbsTotal?: number;
+  proteinTotal?: number;
+  fatTotal?: number;
   isFavorite?: boolean;
 }
 
 export type Category =
-  | "colazione"
-  | "pasta-riso"
+  | "antipasti"
+  | "primi"
   | "secondi"
-  | "verdure"
-  | "zuppe-vellutate"
-  | "panini-wrap"
-  | "snack"
+  | "contorni"
+  | "zuppe"
+  | "panini"
+  | "colazione"
   | "dolci"
-  | "creme-salse"
+  | "condimenti"
   | "impasti"
+  | "forno"
   | "bevande"
+  | "basi"
+  | "conserve"
   | "altro";
 
 export type CategoryLabel = string;

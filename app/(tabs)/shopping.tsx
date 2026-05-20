@@ -3,20 +3,26 @@ import Input from "@/components/Input";
 import Text from "@/components/Text";
 import { COLORS } from "@/constants/colors";
 import { useRecipeContext } from "@/context/RecipeContext";
-import { Ingredient } from "@/src/types";
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
-  Image,
+  FlatList,
+  ImageBackground,
   Share,
   StyleSheet,
   TouchableOpacity,
   View,
 } from "react-native";
-import DraggableFlatList, {
-  RenderItemParams,
-} from "react-native-draggable-flatlist";
+
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  FadeOutRight,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 interface ShoppingItem {
@@ -26,6 +32,135 @@ interface ShoppingItem {
   unit: string;
   checked: boolean;
   isNew?: boolean;
+  raw?: string;
+}
+
+function ShoppingRow({
+  item,
+  index,
+  toggleCheck,
+  deleteItem,
+  updateField,
+  addOrUpdateItem,
+}: {
+  item: ShoppingItem;
+  index: number;
+  toggleCheck: (id: string) => void;
+  deleteItem: (id: string) => void;
+  updateField: (index: number, field: keyof ShoppingItem, value: any) => void;
+  addOrUpdateItem: (index: number) => void;
+}) {
+  const translateX = useSharedValue(0);
+  const THRESHOLD_RIGHT = 35;
+  const THRESHOLD_LEFT = -50;
+
+  const panGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      translateX.value = e.translationX;
+    })
+    .onEnd(() => {
+      if (translateX.value > THRESHOLD_RIGHT) {
+        runOnJS(toggleCheck)(item.id);
+      } else if (translateX.value < THRESHOLD_LEFT) {
+        runOnJS(deleteItem)(item.id);
+        return;
+      }
+      translateX.value = withTiming(0, { duration: 150 });
+    });
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
+  const backgroundSwipeStyle = useAnimatedStyle(() => {
+    if (translateX.value < 0) return { backgroundColor: "#cb0047" };
+    if (translateX.value > 0) return { backgroundColor: "#3a8654" };
+    return { backgroundColor: "transparent" };
+  });
+
+  return (
+    <Animated.View
+      exiting={FadeOutRight.duration(200)}
+      style={{ marginBottom: 10 }}
+    >
+      <Animated.View
+        style={[
+          {
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            justifyContent: "center",
+            paddingHorizontal: 16,
+          },
+          backgroundSwipeStyle,
+        ]}
+      >
+        {translateX.value < 0 && (
+          <View style={{ alignItems: "flex-end" }}>
+            <Ionicons name="trash-outline" size={22} color="white" />
+          </View>
+        )}
+        {translateX.value > 0 && (
+          <View style={{ alignItems: "flex-start" }}>
+            <Ionicons name="checkmark-done" size={22} color="white" />
+          </View>
+        )}
+      </Animated.View>
+
+      <GestureDetector gesture={panGesture}>
+        <Animated.View style={[styles.row, animatedStyle]}>
+          {!item.isNew && (
+            <TouchableOpacity
+              onPress={() => toggleCheck(item.id)}
+              style={{ paddingRight: 8 }}
+            >
+              <Ionicons
+                name={item.checked ? "checkbox" : "square-outline"}
+                size={22}
+                color={item.checked ? "#3a8654" : "#666"}
+              />
+            </TouchableOpacity>
+          )}
+
+          <View style={{ flex: 1 }}>
+            <Input
+              style={[
+                {
+                  flex: 1,
+                  fontSize: 16,
+                  paddingVertical: 4,
+                  marginTop: 12,
+                  borderColor: "white",
+                },
+                item.checked && styles.checkedText,
+              ]}
+              value={
+                item.raw ?? `${item.name} ${item.quantity} ${item.unit}`.trim()
+              }
+              placeholder="Scrivi…"
+              multiline
+              onChangeText={(text) => {
+                updateField(index, "raw", text); // ⭐ memorizziamo il testo grezzo
+              }}
+              onBlur={() => {
+                const text = item.raw ?? "";
+                const parts = text.split(" ").filter(Boolean);
+
+                updateField(index, "name", parts[0] || "");
+                updateField(index, "quantity", parts[1] || "");
+                updateField(index, "unit", parts.slice(2).join(" ") || "");
+                updateField(index, "raw", undefined);
+
+                addOrUpdateItem(index);
+              }}
+            />
+          </View>
+        </Animated.View>
+      </GestureDetector>
+    </Animated.View>
+  );
 }
 
 export default function ShoppingScreen() {
@@ -35,74 +170,75 @@ export default function ShoppingScreen() {
     setShoppingList,
   } = useRecipeContext();
 
-  const [items, setItems] = useState<ShoppingItem[]>([
-    {
-      id: `new-${Date.now()}-${Math.random()}`,
-      name: "",
-      quantity: "",
-      unit: "",
-      checked: false,
-      isNew: true,
-    },
-  ]);
+  const [items, setItems] = useState<ShoppingItem[]>([]);
 
-  // IMPORTA INGREDIENTI DAL CONTESTO
-  useEffect(() => {
-    if (contextShoppingList.length === 0) return;
+  const flatListRef = useRef<FlatList<ShoppingItem>>(null);
 
+  // ⭐ updateField universale
+  const updateField = (
+    index: number,
+    field: keyof ShoppingItem,
+    value: any,
+  ) => {
     setItems((prev) => {
-      let current = prev.filter((item) => !item.isNew);
-
-      const existingNames = new Set(
-        current.map((item) => item.name.toLowerCase().trim()),
-      );
-
-      contextShoppingList.forEach((ing: Ingredient) => {
-        const ingName = (ing.name || "").toLowerCase().trim();
-        if (ingName && !existingNames.has(ingName)) {
-          current.push({
-            id: `imp-${Date.now()}-${Math.random()}`,
-            name: ing.name || "",
-            quantity: ing.quantity || "",
-            unit: ing.unit || "",
-            checked: false,
-          });
-          existingNames.add(ingName);
-        }
-      });
-
-      if (!current.some((i) => i.isNew)) {
-        current.push({
-          id: `new-${Date.now()}-${Math.random()}`,
-          name: "",
-          quantity: "",
-          unit: "",
-          checked: false,
-          isNew: true,
-        });
-      }
-
-      return current;
+      const arr = [...prev];
+      arr[index] = { ...arr[index], [field]: value };
+      return arr;
     });
+  };
+
+  // ⭐ sincronizza 1:1 con il context
+  useEffect(() => {
+    setItems([
+      ...contextShoppingList.map((i) => ({
+        ...i,
+        isNew: false,
+      })),
+      {
+        id: `new-${Date.now()}`,
+        name: "",
+        quantity: "",
+        unit: "",
+        checked: false,
+        isNew: true,
+      },
+    ]);
   }, [contextShoppingList]);
 
-  // AGGIUNGI O TRASFORMA RIGA NEW
   const addOrUpdateItem = (index: number) => {
     const item = items[index];
-    if (item.isNew && !item.name.trim()) return;
+    const normalized = item.name.trim().toLowerCase();
+
+    if (item.isNew && !normalized) return;
+
+    // ⭐ deduplica SOLO per ingredienti scritti manualmente
+    if (normalized) {
+      const dupIndex = items.findIndex(
+        (it, i) =>
+          i !== index &&
+          !it.isNew &&
+          it.name.trim().toLowerCase() === normalized,
+      );
+
+      if (dupIndex !== -1) {
+        Alert.alert("Già presente", "Questo ingrediente è già nella lista.");
+        flatListRef.current?.scrollToIndex({ index: dupIndex, animated: true });
+        return;
+      }
+    }
 
     setItems((prev) => {
-      const newItems = [...prev];
+      const arr = [...prev];
 
       if (item.isNew) {
-        newItems[index] = {
+        arr[index] = {
           ...item,
           id: `item-${Date.now()}`,
           isNew: false,
         };
 
-        newItems.push({
-          id: `new-${Date.now()}-${Math.random()}`,
+        arr.push({
+          id: `new-${Date.now()}`,
           name: "",
           quantity: "",
           unit: "",
@@ -111,38 +247,28 @@ export default function ShoppingScreen() {
         });
       }
 
-      setShoppingList(newItems.filter((i) => !i.isNew));
-      return newItems;
+      setShoppingList(arr.filter((i) => !i.isNew));
+      return arr;
     });
-  };
-
-  const updateField = (
-    index: number,
-    field: "name" | "quantity" | "unit",
-    value: string,
-  ) => {
-    const newItems = [...items];
-    newItems[index] = { ...newItems[index], [field]: value };
-    setItems(newItems);
   };
 
   const toggleCheck = (id: string) => {
     setItems((prev) => {
-      const updated = prev.map((item) =>
-        item.id === id ? { ...item, checked: !item.checked } : item,
+      const arr = prev.map((i) =>
+        i.id === id ? { ...i, checked: !i.checked } : i,
       );
-      setShoppingList(updated.filter((i) => !i.isNew));
-      return updated;
+      setShoppingList(arr.filter((i) => !i.isNew));
+      return arr;
     });
   };
 
   const deleteItem = (id: string) => {
     setItems((prev) => {
-      let filtered = prev.filter((item) => item.id !== id);
+      let arr = prev.filter((i) => i.id !== id);
 
-      if (!filtered.some((item) => item.isNew)) {
-        filtered.push({
-          id: `new-${Date.now()}-${Math.random()}`,
+      if (!arr.some((i) => i.isNew)) {
+        arr.push({
+          id: `new-${Date.now()}`,
           name: "",
           quantity: "",
           unit: "",
@@ -151,8 +277,8 @@ export default function ShoppingScreen() {
         });
       }
 
-      setShoppingList(filtered.filter((i) => !i.isNew));
-      return filtered;
+      setShoppingList(arr.filter((i) => !i.isNew));
+      return arr;
     });
   };
 
@@ -163,17 +289,16 @@ export default function ShoppingScreen() {
         text: "Svuota",
         style: "destructive",
         onPress: () => {
-          const emptyNewRow = [
+          setItems([
             {
-              id: `new-${Date.now()}-${Math.random()}`,
+              id: `new-${Date.now()}`,
               name: "",
               quantity: "",
               unit: "",
               checked: false,
               isNew: true,
             },
-          ];
-          setItems(emptyNewRow);
+          ]);
           clearShoppingList();
           setShoppingList([]);
         },
@@ -182,453 +307,118 @@ export default function ShoppingScreen() {
   };
 
   const shareList = async () => {
-    const activeItems = items.filter((item) => !item.isNew && item.name.trim());
-    if (activeItems.length === 0) return;
+    const active = items.filter((i) => !i.isNew && i.name.trim());
+    if (active.length === 0) return;
 
-    const text = activeItems
-      .map((item) =>
-        `${item.checked ? "✅" : "⬜"} ${item.name} ${item.quantity} ${item.unit}`.trim(),
-      )
+    const text = active
+      .map((i) => `${i.checked ? "✅" : "⬜"} ${i.name}`)
       .join("\n");
 
     try {
       await Share.share({ message: `📋 Lista della Spesa\n\n${text}` });
-    } catch (error) {
-      Alert.alert("Errore", "Non è stato possibile condividere la lista");
-    }
-  };
-
-  const moveItemUp = (index: number) => {
-    setItems((prev) => {
-      if (index === 0) return prev; // già in cima
-      const newArr = [...prev];
-      const temp = newArr[index - 1];
-      newArr[index - 1] = newArr[index];
-      newArr[index] = temp;
-      return newArr;
-    });
-  };
-
-  const moveItemDown = (index: number) => {
-    setItems((prev) => {
-      if (index === prev.length - 1) return prev; // già in fondo
-      const newArr = [...prev];
-      const temp = newArr[index + 1];
-      newArr[index + 1] = newArr[index];
-      newArr[index] = temp;
-      return newArr;
-    });
-  };
-
-  // ====================== DETTATURA VOCALE DEL TELEFONO ======================
-  const startVoiceInput = (index: number) => {
-    Alert.prompt(
-      "🎤 Dettatura vocale",
-      'Parla chiaramente. Il sistema trascriverà quello che dici.\n\nEsempio: "due litri di latte intero"',
-      [
-        { text: "Annulla", style: "cancel" },
-        {
-          text: "Conferma",
-          onPress: (spokenText?: string) => {
-            if (spokenText && spokenText.trim()) {
-              const parsed = parseSpokenText(spokenText);
-
-              setItems((prev) => {
-                const newItems = [...prev];
-                newItems[index] = {
-                  ...newItems[index],
-                  name: parsed.product,
-                  quantity: parsed.quantity,
-                  unit: parsed.unit,
-                  isNew: false,
-                };
-
-                if (!newItems.some((i) => i.isNew)) {
-                  newItems.push({
-                    id: `new-${Date.now()}-${Math.random()}`,
-                    name: "",
-                    quantity: "",
-                    unit: "",
-                    checked: false,
-                    isNew: true,
-                  });
-                }
-
-                return newItems;
-              });
-            }
-          },
-        },
-      ],
-    );
-  };
-
-  const parseSpokenText = (text: string) => {
-    const lower = text.toLowerCase().trim();
-
-    const qtyMatch = lower.match(
-      /(\d+[.,]?\d*)\s*(litro|litri|kg|grammi|g|ml|bottiglia|bottiglie|confezione|pezzo|pezzi)?/i,
-    );
-
-    let quantity = "";
-    let unit = "";
-    let product = text;
-
-    if (qtyMatch) {
-      quantity = qtyMatch[1].replace(",", ".");
-      if (qtyMatch[2]) unit = qtyMatch[2];
-      product = lower.replace(qtyMatch[0], "").trim();
-    }
-
-    product = product.replace(/^(di|del|della|delle|dei)\s+/i, "").trim();
-
-    return {
-      quantity: quantity || "",
-      unit: unit || "",
-      product: product || text,
-    };
-  };
-
-  // ============================================================
-  // 🔥 RENDER ITEM CON DRAG HANDLE
-  // ============================================================
-
-  const renderItem = ({
-    item,
-    drag,
-    getIndex,
-  }: RenderItemParams<ShoppingItem>) => {
-    const index = getIndex();
-    if (index === undefined) return null;
-
-    return (
-      <View style={styles.row}>
-        {/* CHECKBOX */}
-        {!item.isNew && (
-          <View style={styles.cellCheckbox}>
-            <TouchableOpacity onPress={() => toggleCheck(item.id)}>
-              <Ionicons
-                name={item.checked ? "checkbox" : "square-outline"}
-                size={22}
-                color={item.checked ? "#3a8654" : "#666"}
-              />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* NOME */}
-        <View style={styles.cellName}>
-          <View style={styles.inputWrapper}>
-            <Input
-              style={[styles.nameInput, item.checked && styles.checkedText]}
-              value={item.name}
-              onChangeText={(text) => updateField(index, "name", text)}
-              placeholder={item.isNew ? "Scrivi prodotto…" : ""}
-              multiline
-              onBlur={() => addOrUpdateItem(index)}
-            />
-          </View>
-        </View>
-
-        {/* QTÀ */}
-        <View style={styles.cellQty}>
-          <View style={styles.inputWrapper}>
-            <Input
-              style={styles.qtyInput}
-              value={item.quantity}
-              onChangeText={(text) => updateField(index, "quantity", text)}
-              placeholder="-"
-              keyboardType="numeric"
-              onBlur={() => addOrUpdateItem(index)}
-            />
-          </View>
-        </View>
-
-        {/* UNITÀ */}
-        <View style={styles.cellUnit}>
-          <View style={styles.inputWrapper}>
-            <Input
-              style={styles.unitInput}
-              value={item.unit}
-              onChangeText={(text) => updateField(index, "unit", text)}
-              placeholder="-"
-              onBlur={() => addOrUpdateItem(index)}
-            />
-          </View>
-        </View>
-
-        {/* DELETE */}
-        <View style={styles.cellDelete}>
-          {!item.isNew && (
-            <TouchableOpacity onPress={() => deleteItem(item.id)}>
-              <Ionicons name="trash-outline" size={20} color="#cb0047" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* FRECCE SU/GIÙ */}
-        <View style={styles.cellDrag}>
-          {!item.isNew && (
-            <>
-              {/* Freccia SU */}
-              <TouchableOpacity
-                style={{ padding: 3 }}
-                onPress={() => moveItemUp(index)}
-              >
-                <Ionicons name="caret-up" size={20} color={COLORS.primary} />
-              </TouchableOpacity>
-
-              {/* Freccia GIÙ */}
-              <TouchableOpacity
-                style={{ padding: 3 }}
-                onPress={() => moveItemDown(index)}
-              >
-                <Ionicons name="caret-down" size={20} color={COLORS.primary} />
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </View>
-    );
+    } catch {}
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* HEADER FISSO */}
-      <View style={styles.header}>
-        <Image
-          source={require("../../assets/images/spesa.png")}
-          style={styles.icon}
-          resizeMode="contain"
-        />
-        <Text bold style={styles.title}>
-          Lista della Spesa
-        </Text>
-      </View>
+    <ImageBackground
+      source={require("../../assets/images/sfondo.png")}
+      style={styles.bg}
+      resizeMode="cover"
+    >
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text bold style={styles.title}>
+            Lista della Spesa
+          </Text>
+        </View>
 
-      {/* INTESTAZIONE FISSA */}
-      <View style={styles.headerRow}>
-        <View style={styles.headerCheckbox} />
-        <Text variant="title" style={styles.headerName}>
-          Prodotto
-        </Text>
-        <Text variant="title" style={styles.headerQty}>
-          Qtà
-        </Text>
-        <Text variant="title" style={styles.headerUnit}>
-          Unità
-        </Text>
-        <View style={styles.separator}></View>
-        <View style={styles.headerIcon} />
-        <View style={styles.headerDrag} />
-      </View>
-
-      {/* LISTA SCORRIBILE */}
-      <View style={{ flex: 1 }}>
-        <DraggableFlatList
-          data={items}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          onDragEnd={({ data }) => {
-            setItems(data);
-            setShoppingList(data.filter((i) => !i.isNew));
+        <View style={styles.noteWrapper}>
+          <FlatList
+            ref={flatListRef}
+            data={items}
+            keyExtractor={(i) => i.id}
+            renderItem={({ item, index }) => (
+              <ShoppingRow
+                item={item}
+                index={index}
+                toggleCheck={toggleCheck}
+                deleteItem={deleteItem}
+                updateField={updateField}
+                addOrUpdateItem={addOrUpdateItem}
+              />
+            )}
+          />
+        </View>
+        <View
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            backgroundColor: "white",
+            paddingVertical: 12,
+            paddingBottom: 10,
+            paddingHorizontal: 16,
+            borderTopWidth: 1,
+            borderColor: "#ddd",
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            zIndex: 50,
           }}
-        />
-      </View>
+        >
+          <TouchableOpacity
+            onPress={shareList}
+            style={{ alignItems: "center" }}
+          >
+            <Ionicons
+              name="share-social-outline"
+              size={18}
+              color={COLORS.textLight}
+            />
+            <Text style={{ color: COLORS.textLight, fontSize: 10 }}>
+              Condividi lista
+            </Text>
+          </TouchableOpacity>
 
-      {/* BOTTONI FISSI IN BASSO */}
-      <View style={styles.bottomButtons}>
-        <TouchableOpacity style={styles.shareButton} onPress={shareList}>
-          <Ionicons name="share-social-outline" size={22} color="white" />
-          <Text bold style={styles.bottomButtonText}>
-            Condividi
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.clearButton} onPress={clearAll}>
-          <Ionicons name="trash-outline" size={22} color="white" />
-          <Text bold style={styles.bottomButtonText}>
-            Svuota
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+          <TouchableOpacity onPress={clearAll} style={{ alignItems: "center" }}>
+            <Ionicons name="trash-outline" size={18} color="#cb0047" />
+            <Text style={{ color: "#cb0047", fontSize: 10 }}>Svuota lista</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  bg: { flex: 1 },
+  container: { flex: 1 },
+  header: { paddingVertical: 20 },
+  title: { fontSize: 30, textAlign: "center", marginTop: 50, marginBottom: 30 },
+  noteWrapper: {
     flex: 1,
-    paddingTop: 50,
-    backgroundColor: "#fffaf0",
-    marginBottom: -60,
-    paddingHorizontal: 14,
+    backgroundColor: "white",
+    paddingTop: 30,
+    padding: 20,
   },
-
-  header: { alignItems: "center" },
-  title: { fontSize: 28, padding: 20, textAlign: "center", marginBottom: 20 },
-  icon: { height: 60, width: 60, marginBottom: 10 },
-
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 15,
-    backgroundColor: COLORS.primary,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 3,
-    color: "white",
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    marginHorizontal: 10,
-  },
-
-  headerCheckbox: { width: 32 },
-  headerName: { flex: 1, fontSize: 16, paddingLeft: 16, color: "white" },
-  headerQty: {
-    width: 50,
-    textAlign: "center",
-    fontSize: 16,
-    color: "white",
-  },
-  headerUnit: {
-    width: 50,
-    textAlign: "center",
-    fontSize: 16,
-    color: "white",
-  },
-  headerIcon: { width: 36 },
-  headerDrag: { width: 32 },
-
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
     backgroundColor: "white",
-
-    borderBottomWidth: 1,
-    borderBottomColor: "#c6c6c6",
-    marginHorizontal: 10,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
+    paddingHorizontal: 15,
   },
-
-  cellCheckbox: {
-    width: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  cellName: {
-    flex: 1,
-    paddingRight: 8,
-    textAlignVertical: "center",
-    paddingTop: 15,
-  },
-
-  cellQty: {
-    width: 50,
-    alignItems: "center",
-    justifyContent: "center",
-    textAlignVertical: "center",
-    paddingTop: 15,
-  },
-
-  cellUnit: {
-    width: 50,
-    alignItems: "center",
-    justifyContent: "center",
-    textAlignVertical: "center",
-    paddingTop: 15,
-  },
-
-  nameInput: {
-    minHeight: 40,
-    borderColor: "white",
-    textAlignVertical: "center",
-    textAlign: "left",
-    paddingVertical: 0,
-  },
-  qtyInput: {
-    width: "100%",
-    textAlign: "left",
-    borderColor: "white",
-    paddingVertical: 0,
-    textAlignVertical: "center",
-  },
-  unitInput: {
-    width: "100%",
-    textAlign: "left",
-    borderColor: "white",
-    paddingVertical: 0,
-    textAlignVertical: "center",
-  },
-
-  cellDrag: {
-    width: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  bottomButtons: {
-    flexDirection: "row",
-    padding: 16,
-    gap: 12,
-    backgroundColor: "#fffaf0",
-    marginBottom: 10,
-  },
-
-  shareButton: {
-    flex: 1,
-    backgroundColor: COLORS.primary,
-    padding: 16,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-
-  clearButton: {
-    flex: 1,
-    backgroundColor: COLORS.primary,
-    padding: 16,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-
-  bottomButtonText: { color: "white", fontSize: 16 },
 
   checkedText: {
     textDecorationLine: "line-through",
-    color: "#888",
+    opacity: 0.5,
   },
-  cellDelete: {
-    width: 36,
+
+  floatingButton: {
+    position: "absolute",
     alignItems: "center",
-    justifyContent: "center",
-    marginHorizontal: 3,
-  },
-  inputWrapper: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  separator: {
-    height: 1,
-    backgroundColor: "#eee",
-    marginVertical: 18,
+    backgroundColor: "white",
+    padding: 12,
+    borderRadius: 50,
   },
 });

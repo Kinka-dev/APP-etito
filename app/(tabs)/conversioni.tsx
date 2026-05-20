@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import {
   Image,
+  ImageBackground,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -19,104 +20,110 @@ export default function ConversioniScreen() {
       key: "imperial",
       label: "Imperiale ↔ Metrico",
       desc: "Converti cup, tbsp, oz in ml e g",
-      icon: require("../../assets/images/cups.jpg"),
+      icon: require("../../assets/images/cups.png"),
     },
     {
       key: "volume",
       label: "Volume ↔ Peso",
       desc: "Trasforma ml in grammi in base all’ingrediente",
-      icon: require("../../assets/images/capacita.jpg"),
+      icon: require("../../assets/images/volume.png"),
     },
     {
       key: "temperature",
       label: "Temperatura forno",
       desc: "Celsius, Fahrenheit, statico e ventilato",
-      icon: require("../../assets/images/temperatura.jpg"),
+      icon: require("../../assets/images/oven.png"),
     },
     {
       key: "yeast",
       label: "Lievito fresco ↔ secco",
       desc: "Calcolo automatico 1:3",
-      icon: require("../../assets/images/lievito.jpg"),
+      icon: require("../../assets/images/yeast.png"),
     },
     {
       key: "flour",
       label: "Forza farina (W)",
       desc: "Miscela farine per ottenere il W desiderato",
-      icon: require("../../assets/images/farine.jpg"),
+      icon: require("../../assets/images/flour.png"),
     },
     {
       key: "subs",
       label: "Sostituzioni ingredienti",
       desc: "Alternative affidabili per ogni ingrediente",
-      icon: require("../../assets/images/sostituzioni.jpg"),
+      icon: require("../../assets/images/subs.png"),
     },
   ];
 
   return (
-    <ScrollView
-      style={[styles.container, { flex: 1, paddingHorizontal: 16 }]}
-      contentContainerStyle={{ paddingBottom: 120 }}
-      showsVerticalScrollIndicator={false}
+    <ImageBackground
+      source={require("../../assets/images/sfondo.png")}
+      style={styles.bg}
+      resizeMode="cover"
     >
-      {/* HEADER */}
-      {selected === null && (
-        <View style={styles.header}>
-          <Image
-            source={require("../../assets/images/scale.png")}
-            style={styles.icon}
-            resizeMode="contain"
-          />
-          <Text bold style={styles.title}>
-            Conversioni
-          </Text>
-        </View>
-      )}
+      <ScrollView
+        style={[styles.container, { flex: 1, paddingHorizontal: 16 }]}
+        contentContainerStyle={{ paddingBottom: 120 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* HEADER */}
+        {selected === null && (
+          <View style={styles.header}>
+            {/* <Image
+              source={require("../../assets/images/scale.png")}
+              style={styles.icon}
+              resizeMode="contain"
+            /> */}
+            <Text bold style={styles.title}>
+              Convertitori
+            </Text>
+          </View>
+        )}
 
-      {/* ⭐ MENU DEI CONVERTITORI */}
-      {selected === null && (
-        <View style={styles.menuGrid}>
-          {converters.map((c) => (
-            <TouchableOpacity
-              key={c.key}
-              style={styles.menuCardColumn}
-              onPress={() => setSelected(c.key)}
-            >
-              <Image
-                source={c.icon}
-                style={styles.menuCardImageTop}
-                resizeMode="cover"
-              />
+        {/* ⭐ MENU DEI CONVERTITORI */}
+        {selected === null && (
+          <View style={styles.grid}>
+            {converters.map((c) => (
+              <TouchableOpacity
+                key={c.key}
+                style={styles.gridCard}
+                onPress={() => setSelected(c.key)}
+              >
+                <Image
+                  source={c.icon}
+                  style={{ width: 50, height: 50, marginTop: 20 }}
+                  resizeMode="cover"
+                />
 
-              <View style={styles.menuCardTextBlock}>
-                <Text bold style={styles.menuCardTitle}>
-                  {c.label}
-                </Text>
-                <Text style={styles.menuCardDesc}>{c.desc}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
+                <View style={{ padding: 10 }}>
+                  <Text bold style={styles.menuCardTitle}>
+                    {c.label}
+                  </Text>
+                  <Text style={styles.menuCardDesc}>{c.desc}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
-      {/* ⭐ CARD SELEZIONATA */}
-      {selected === "imperial" && <ImperialMetricCard />}
-      {selected === "volume" && <VolumeWeightCard />}
-      {selected === "temperature" && <TemperatureCard />}
-      {selected === "yeast" && <YeastCard />}
-      {selected === "flour" && <FlourStrengthCard />}
-      {selected === "subs" && <IngredientSubstitutionCard />}
+        {/* ⭐ CARD SELEZIONATA */}
+        {selected === "imperial" && <ImperialMetricCard />}
+        {selected === "volume" && <VolumeWeightCard />}
+        {selected === "temperature" && <TemperatureCard />}
+        {selected === "yeast" && <YeastCard />}
+        {selected === "flour" && <FlourStrengthCard />}
+        {selected === "subs" && <IngredientSubstitutionCard />}
 
-      {/* ⭐ TORNA AL MENU */}
-      {selected !== null && (
-        <TouchableOpacity
-          style={styles.backTopLeft}
-          onPress={() => setSelected(null)}
-        >
-          <Ionicons name="arrow-back-outline" size={24} color="#ffffff" />
-        </TouchableOpacity>
-      )}
-    </ScrollView>
+        {/* ⭐ TORNA AL MENU */}
+        {selected !== null && (
+          <TouchableOpacity
+            style={styles.backTopLeft}
+            onPress={() => setSelected(null)}
+          >
+            <Ionicons name="arrow-back-outline" size={24} color="#ffffff" />
+          </TouchableOpacity>
+        )}
+      </ScrollView>
+    </ImageBackground>
   );
 }
 
@@ -250,6 +257,12 @@ function ImperialMetricCard() {
 
   return (
     <View style={styles.card}>
+      <TouchableOpacity onPress={handleReset} style={styles.resetButton}>
+        <Ionicons name="refresh-outline" size={18} color="#ffffff" />
+        <Text bold style={styles.resetText}>
+          Reset
+        </Text>
+      </TouchableOpacity>
       {/* ICONA */}
       <View style={styles.iconContainer}>
         <Image
@@ -275,8 +288,6 @@ function ImperialMetricCard() {
       <View style={styles.rowCenter}>
         {/* COLONNA IMPERIALE */}
         <View style={styles.inputColumn}>
-          <Text style={styles.label}>Imperiale</Text>
-
           <View style={styles.inputWithUnit}>
             <Input
               style={[styles.input, { flex: 1 }]}
@@ -336,8 +347,6 @@ function ImperialMetricCard() {
 
         {/* COLONNA METRICA */}
         <View style={styles.inputColumn}>
-          <Text style={styles.label}>Metrico</Text>
-
           <View style={styles.inputWithUnit}>
             <Input
               style={[styles.input, { flex: 1 }]}
@@ -375,26 +384,31 @@ function ImperialMetricCard() {
       </View>
       <View style={styles.separator}></View>
 
-      {/* ⭐ ESEMPI RAPIDI (ripristinati) */}
-      <View style={{ marginTop: 16 }}>
+      {/* ⭐ ESEMPI RAPIDI IN 2 COLONNE */}
+      <View style={{ marginTop: 5 }}>
         <Text bold style={styles.exampleTitle}>
           Esempi rapidi
         </Text>
-        <Text style={styles.example}>• 1 cup = 240 ml</Text>
-        <Text style={styles.example}>• 1 tbsp = 15 ml</Text>
-        <Text style={styles.example}>• 1 tsp = 5 ml</Text>
-        <Text style={styles.example}>• 1 oz = 28 g</Text>
-        <Text style={styles.example}>• 1 lb = 454 g</Text>
-      </View>
 
-      {/* RESET */}
-      <View style={styles.footerRow}>
-        <TouchableOpacity onPress={handleReset} style={styles.resetButton}>
-          <Ionicons name="refresh-outline" size={18} color="#ffffff" />
-          <Text bold style={styles.resetText}>
-            Reset
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.examplesGrid}>
+          <View style={styles.exampleItem}>
+            <Text style={styles.example}>• 1 cup = 240 ml</Text>
+          </View>
+          <View style={styles.exampleItem}>
+            <Text style={styles.example}>• 1 oz = 28 g</Text>
+          </View>
+
+          <View style={styles.exampleItem}>
+            <Text style={styles.example}>• 1 tbsp = 15 ml</Text>
+          </View>
+          <View style={styles.exampleItem}>
+            <Text style={styles.example}>• 1 lb = 454 g</Text>
+          </View>
+
+          <View style={styles.exampleItem}>
+            <Text style={styles.example}>• 1 tsp = 5 ml</Text>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -454,6 +468,12 @@ function VolumeWeightCard() {
 
   return (
     <View style={styles.card}>
+      <TouchableOpacity onPress={handleReset} style={styles.resetButton}>
+        <Ionicons name="refresh-outline" size={18} color="#ffffff" />
+        <Text bold style={styles.resetText}>
+          Reset
+        </Text>
+      </TouchableOpacity>
       {/* ICONA */}
       <View style={styles.iconContainer}>
         <Image
@@ -565,16 +585,6 @@ function VolumeWeightCard() {
       >
         grammi = ml × densità • ml = grammi ÷ densità
       </Text>
-
-      {/* RESET */}
-      <View style={styles.footerRow}>
-        <TouchableOpacity onPress={handleReset} style={styles.resetButton}>
-          <Ionicons name="refresh-outline" size={18} color="#ffffff" />
-          <Text bold style={styles.resetText}>
-            Reset
-          </Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -634,6 +644,12 @@ function TemperatureCard() {
 
   return (
     <View style={styles.card}>
+      <TouchableOpacity onPress={handleReset} style={styles.resetButton}>
+        <Ionicons name="refresh-outline" size={18} color="#ffffff" />
+        <Text bold style={styles.resetText}>
+          Reset
+        </Text>
+      </TouchableOpacity>
       <View style={styles.iconContainer}>
         <Image
           source={require("../../assets/images/oven.png")}
@@ -660,7 +676,6 @@ function TemperatureCard() {
       <View style={styles.rowCenter}>
         {/* °C */}
         <View style={styles.inputColumn}>
-          <Text style={styles.label}>Celsius</Text>
           <View style={styles.inputWithUnit}>
             <Input
               style={[styles.input, { flex: 1 }]}
@@ -697,7 +712,6 @@ function TemperatureCard() {
 
         {/* °F */}
         <View style={styles.inputColumn}>
-          <Text style={styles.label}>Fahrenheit</Text>
           <View style={styles.inputWithUnit}>
             <Input
               style={[styles.input, { flex: 1 }]}
@@ -723,14 +737,13 @@ function TemperatureCard() {
       <View style={styles.separator}></View>
 
       {/* ⭐ SEZIONE STATICO ↔ VENTILATO */}
-      <Text bold style={[styles.sectionHeader, { marginTop: 24 }]}>
+      <Text bold style={[styles.sectionHeader]}>
         Statico ↔ Ventilato
       </Text>
 
       <View style={styles.rowCenter}>
         {/* STATICO */}
         <View style={styles.inputColumn}>
-          <Text style={styles.label}>Statico</Text>
           <View style={styles.inputWithUnit}>
             <Input
               style={[styles.input, { flex: 1 }]}
@@ -759,7 +772,6 @@ function TemperatureCard() {
 
         {/* VENTILATO */}
         <View style={styles.inputColumn}>
-          <Text style={styles.label}>Ventilato</Text>
           <View style={styles.inputWithUnit}>
             <Input
               style={[styles.input, { flex: 1 }]}
@@ -779,16 +791,6 @@ function TemperatureCard() {
       >
         Statico = Ventilato + 20°C • Ventilato = Statico – 20°C
       </Text>
-
-      {/* RESET */}
-      <View style={styles.footerRow}>
-        <TouchableOpacity onPress={handleReset} style={styles.resetButton}>
-          <Ionicons name="refresh-outline" size={18} color="#ffffff" />
-          <Text bold style={styles.resetText}>
-            Reset
-          </Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -827,6 +829,12 @@ function YeastCard() {
 
   return (
     <View style={styles.card}>
+      <TouchableOpacity onPress={handleReset} style={styles.resetButton}>
+        <Ionicons name="refresh-outline" size={18} color="#ffffff" />
+        <Text bold style={styles.resetText}>
+          Reset
+        </Text>
+      </TouchableOpacity>
       {/* ICONA */}
       <View style={styles.iconContainer}>
         <Image
@@ -914,16 +922,6 @@ function YeastCard() {
       >
         secco = fresco ÷ 3 • fresco = secco × 3
       </Text>
-
-      {/* RESET */}
-      <View style={styles.footerRow}>
-        <TouchableOpacity onPress={handleReset} style={styles.resetButton}>
-          <Ionicons name="refresh-outline" size={18} color="#ffffff" />
-          <Text bold style={styles.resetText}>
-            Reset
-          </Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -1017,6 +1015,12 @@ function FlourStrengthCard() {
 
   return (
     <View style={styles.card}>
+      <TouchableOpacity onPress={handleReset} style={styles.resetButton}>
+        <Ionicons name="refresh-outline" size={18} color="#ffffff" />
+        <Text bold style={styles.resetText}>
+          Reset
+        </Text>
+      </TouchableOpacity>
       <View style={styles.iconContainer}>
         <Image
           source={require("../../assets/images/flour.png")}
@@ -1134,16 +1138,6 @@ function FlourStrengthCard() {
           onChangeText={setG3}
           onFocus={() => setG3("")}
         />
-      </View>
-
-      {/* Reset in basso a destra */}
-      <View style={styles.footerRow}>
-        <TouchableOpacity onPress={handleReset} style={styles.resetButton}>
-          <Ionicons name="refresh-outline" size={18} color="#ffffff" />
-          <Text bold style={styles.resetText}>
-            Reset
-          </Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
@@ -1320,13 +1314,19 @@ function IngredientSubstitutionCard() {
 const styles = StyleSheet.create({
   container: {
     paddingTop: 90,
-    backgroundColor: "#fffaf0",
+    // backgroundColor: "#fffaf0",
   },
   header: {
     // paddingVertical: 20,
     alignItems: "center",
   },
-  title: { fontSize: 28, padding: 20, textAlign: "center", marginBottom: 20 },
+  title: {
+    fontSize: 30,
+    padding: 15,
+    textAlign: "center",
+    marginBottom: 50,
+    color: "black",
+  },
   icon: {
     height: 60,
     width: 60,
@@ -1336,12 +1336,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     padding: 18,
     borderRadius: 16,
-    marginBottom: 24,
     elevation: 4,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
+    marginTop: -30,
   },
   iconContainer: {
     alignItems: "center",
@@ -1404,6 +1404,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start", // ⭐ NON center
     justifyContent: "center",
     gap: 12,
+    marginTop: -10,
   },
 
   inputColumn: {
@@ -1414,7 +1415,7 @@ const styles = StyleSheet.create({
   },
 
   input: {
-    height: 48,
+    height: 54,
     backgroundColor: "#f2f2f2",
     paddingHorizontal: 14,
     borderRadius: 12,
@@ -1483,7 +1484,7 @@ const styles = StyleSheet.create({
   },
 
   description: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#666",
     textAlign: "center",
     marginBottom: 12,
@@ -1519,6 +1520,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: COLORS.primary,
+    width: 80,
+    alignSelf: "flex-end",
+    marginTop: -5,
+    marginRight: -5,
   },
 
   resetText: {
@@ -1642,7 +1647,7 @@ const styles = StyleSheet.create({
   },
 
   backButton: {
-    marginTop: 20,
+    marginTop: 5,
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "center",
@@ -1712,7 +1717,7 @@ const styles = StyleSheet.create({
 
   backTopLeft: {
     position: "absolute",
-    top: 10,
+    top: -20,
     left: 10,
     zIndex: 999,
     backgroundColor: COLORS.primary,
@@ -1720,34 +1725,72 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     elevation: 3,
   },
-  menuCardColumn: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    marginBottom: 20,
-    elevation: 2,
-    overflow: "hidden",
+
+  bg: {
+    flex: 1,
     width: "100%",
-  },
-  menuCardTextBlock: {
-    padding: 20,
+    height: "100%",
   },
 
   menuCardTitle: {
-    fontSize: 16,
-    color: "#333",
+    fontSize: 15,
+    color: COLORS.text,
     marginBottom: 4,
     textAlign: "center",
   },
 
   menuCardDesc: {
-    fontSize: 13,
+    fontSize: 12,
     color: "#666",
     textAlign: "center",
-    lineHeight: 16,
+    lineHeight: 15,
   },
-  menuCardImageTop: {
-    width: "100%",
-    height: 220,
-    backgroundColor: "#eee",
+
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    marginTop: 10,
+  },
+
+  gridCard: {
+    paddingBottom: 10,
+    width: "48%", // ⭐ due colonne
+    backgroundColor: "white",
+    borderRadius: 12,
+    marginBottom: 16,
+    overflow: "hidden",
+    elevation: 3,
+    alignItems: "center",
+    textAlign: "center",
+  },
+
+  fabReset: {
+    position: "absolute",
+    bottom: 30,
+    right: 30,
+    backgroundColor: COLORS.primary,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    zIndex: 999,
+  },
+
+  examplesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+
+  exampleItem: {
+    width: "48%", // ⭐ due colonne
   },
 });

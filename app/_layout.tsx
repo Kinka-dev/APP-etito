@@ -10,6 +10,7 @@ export default function RootLayout() {
     "Outfit-Regular": require("../assets/fonts/Outfit-Regular.ttf"),
     "Outfit-Medium": require("../assets/fonts/Outfit-Medium.ttf"),
     "Outfit-SemiBold": require("../assets/fonts/Outfit-SemiBold.ttf"),
+    "CherryBombOne-Regular": require("../assets/fonts/CherryBombOne-Regular.ttf"),
   });
 
   if (!fontsLoaded) return null;

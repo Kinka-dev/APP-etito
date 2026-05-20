@@ -1,10 +1,15 @@
-import { COLORS } from "@/constants/colors";
-import React from "react";
-import { Image, Pressable, StyleSheet } from "react-native";
+// CategoryTab.tsx
+import React, { forwardRef } from "react";
+import {
+  Image,
+  LayoutChangeEvent,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 import Animated, {
   useAnimatedStyle,
   withSpring,
-  withTiming,
 } from "react-native-reanimated";
 import Text from "./Text";
 
@@ -13,11 +18,15 @@ type Props = {
   icon?: any;
   selected: boolean;
   onPress: () => void;
+  onLayout?: (e: LayoutChangeEvent) => void;
+  labelStyle?: any;
 };
 
-export default function CategoryTab({ label, icon, selected, onPress }: Props) {
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
+const AnimatedView = Animated.createAnimatedComponent(View);
+
+const CategoryTab = forwardRef<View, Props>(
+  ({ icon, label, selected, onPress, onLayout, labelStyle }, ref) => {
+    const animatedStyle = useAnimatedStyle(() => ({
       transform: [
         {
           scale: withSpring(selected ? 1.05 : 1, {
@@ -26,63 +35,80 @@ export default function CategoryTab({ label, icon, selected, onPress }: Props) {
           }),
         },
       ],
-      backgroundColor: withTiming(selected ? "#fff4e6" : "#ffffff", {
-        duration: 60,
-      }),
-      borderColor: withTiming(selected ? COLORS.primary : "#dddddd", {
-        duration: 60,
-      }),
-      shadowOpacity: withTiming(selected ? 0.1 : 0.02, { duration: 60 }),
-      shadowRadius: withTiming(selected ? 6 : 3, { duration: 60 }),
-    };
-  });
+    }));
 
-  return (
-    <Animated.View style={[styles.wrapper, animatedStyle]}>
-      <Pressable onPress={onPress} style={styles.tab}>
-        {icon && <Image source={icon} style={styles.icon} />}
-        <Text style={[styles.text, selected && styles.textActive]}>
-          {label}
-        </Text>
-      </Pressable>
-    </Animated.View>
-  );
-}
+    return (
+      <AnimatedView
+        ref={ref}
+        style={[
+          styles.wrapper,
+          animatedStyle,
+          // ⭐ glow quando selezionata
+        ]}
+        onLayout={onLayout}
+      >
+        <Pressable onPress={onPress} style={styles.row}>
+          {/* Testo a sinistra */}
+          <View style={styles.textContainer}>
+            <Text bold style={[styles.label, labelStyle]}>
+              {label}
+            </Text>
+          </View>
+
+          {/* Immagine a destra */}
+          {icon && (
+            <Image source={icon} style={styles.icon} resizeMode="cover" />
+          )}
+        </Pressable>
+      </AnimatedView>
+    );
+  },
+);
+
+export default CategoryTab;
 
 const styles = StyleSheet.create({
   wrapper: {
-    marginRight: 14,
-    borderRadius: 20,
-    borderWidth: 2,
-    shadowColor: "#000",
-    elevation: 3,
-    marginVertical: 10,
+    width: 360, // ⭐ larghezza fissa
+    height: 170, // ⭐ altezza fissa per allineamento perfetto
   },
-  tab: {
-    minWidth: 130, // ⭐ più spazio per icona + testo
-    paddingHorizontal: 10,
-    paddingVertical: 15,
-    borderRadius: 20,
+
+  row: {
+    flexDirection: "row", // ⭐ testo sinistra, immagine destra
+    width: "100%",
+    height: "100%",
     alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "column",
+    justifyContent: "flex-start",
+    paddingHorizontal: 16,
+  },
+
+  textContainer: {
+    minWidth: 100,
+    maxWidth: 180,
+    marginRight: -30,
+    marginLeft: 30,
+    textAlign: "center",
+  },
+
+  label: {
+    fontSize: 16,
+    color: "black",
+    flexWrap: "wrap",
+    paddingVertical: 15,
+    paddingHorizontal: 25,
+    backgroundColor: "white",
+    borderRadius: 30,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.05)",
+    textAlign: "center",
   },
 
   icon: {
-    width: 42,
-    height: 42,
-    marginBottom: 6,
-  },
-
-  text: {
-    fontSize: 13,
-    color: "#444",
-    textAlign: "center",
-    flexShrink: 1, // ⭐ evita overflow
-    flexWrap: "wrap", // ⭐ permette testo su 2 righe
-  },
-
-  textActive: {
-    color: COLORS.primary,
+    width: 170, // ⭐ immagine a destra
+    height: "100%",
   },
 });

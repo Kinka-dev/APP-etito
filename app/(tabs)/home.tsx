@@ -1,8 +1,8 @@
 // app/(tabs)/recipes.tsx
-import CategoryTab from "@/components/CategoryTab";
+import CategoryTabsCarousel, {
+  CategoryItem,
+} from "@/components/CategoryTabsCarousel";
 import RecipeCard from "@/components/RecipeCard";
-import RecipeOverlayCard from "@/components/RecipeOverlayCard";
-import SuccessToast from "@/components/SuccessToast";
 import Text from "@/components/Text";
 import {
   CATEGORIES,
@@ -14,12 +14,11 @@ import { useRecipeContext } from "@/context/RecipeContext";
 import { Category } from "@/src/types";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
+  Animated,
   FlatList,
-  Image,
-  ScrollView,
+  ImageBackground,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -36,6 +35,25 @@ export default function RecipesScreen() {
   const [showOverlayForId, setShowOverlayForId] = useState<string | null>(null);
 
   const [showToast, setShowToast] = useState(false);
+  const favorites = recipes.filter((r) => r.isFavorite);
+  const favCount = favorites.length;
+
+  // ⭐ Animazione bounce
+  const bounce = useRef(new Animated.Value(1)).current;
+
+  const CATEGORY_ITEMS: CategoryItem[] = [
+    {
+      id: "all",
+      label: "Tutte le ricette",
+      icon: require("../../assets/images/tutte.png"),
+    },
+    ...CATEGORIES.map((cat) => ({
+      id: cat,
+      label: CATEGORY_LABELS[cat],
+      icon: CATEGORY_IMAGES[cat],
+    })),
+  ];
+  console.log("CATEGORY_ITEMS:", CATEGORY_ITEMS);
 
   const filteredRecipes = useMemo(() => {
     const lowerSearch = search.toLowerCase().trim();
@@ -56,135 +74,125 @@ export default function RecipesScreen() {
     });
   }, [recipes, search, selectedCategory]);
 
-  const handleDelete = (recipeId: string) => {
-    Alert.alert("Elimina ricetta", "Sei sicuro?", [
-      { text: "Annulla", style: "cancel" },
-      {
-        text: "Elimina",
-        style: "destructive",
-        onPress: () => deleteRecipe(recipeId),
-      },
-    ]);
-  };
+  useEffect(() => {
+    if (favCount > 0) {
+      Animated.sequence([
+        Animated.timing(bounce, {
+          toValue: 1.25,
+          duration: 120,
+          useNativeDriver: true,
+        }),
+        Animated.timing(bounce, {
+          toValue: 1,
+          duration: 120,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [favCount]);
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Image
-          source={require("../../assets/images/ricette.png")}
-          style={styles.icon}
-          resizeMode="contain"
-        />
-        <Text variant="title" style={styles.title}>
-          Ricette
-        </Text>
-      </View>
+    <ImageBackground
+      source={require("../../assets/images/sfondo.png")}
+      style={styles.bg}
+      resizeMode="cover"
+    >
+      <Animated.View
+        style={[styles.favButton, { transform: [{ scale: bounce }] }]}
+      >
+        <TouchableOpacity onPress={() => router.push("/favorites")}>
+          <Ionicons
+            name={favCount > 0 ? "heart" : "heart-outline"}
+            size={24}
+            color={favCount > 0 ? "#ff4d6d" : COLORS.primary}
+          />
+        </TouchableOpacity>
 
-      {/* Categorie con icona sopra il titolo - sempre visibili */}
-      <View style={styles.categoriesWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20 }}
-        >
-          <CategoryTab
-            label="Tutte"
-            icon={require("../../assets/images/tutte.png")}
-            selected={selectedCategory === "all"}
-            onPress={() => setSelectedCategory("all")}
+        {/* ⭐ Badge rosso */}
+        {favCount > 0 && (
+          <View style={styles.badge}>
+            <Text bold style={styles.badgeText}>
+              {favCount}
+            </Text>
+          </View>
+        )}
+      </Animated.View>
+      <Animated.View
+        style={[styles.addRecipeButton, { transform: [{ scale: bounce }] }]}
+      >
+        <TouchableOpacity onPress={() => router.push("/add")}>
+          <Ionicons
+            name={"add-circle-outline"}
+            size={24}
+            color={COLORS.primary}
+          />
+        </TouchableOpacity>
+      </Animated.View>
+      <SafeAreaView style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text variant="title" style={styles.title}>
+            Ricette
+          </Text>
+        </View>
+
+        <View style={styles.categoriesWrapper}>
+          <CategoryTabsCarousel
+            categories={CATEGORY_ITEMS}
+            selected={selectedCategory}
+            onSelect={setSelectedCategory}
+          />
+        </View>
+
+        {/* Barra di ricerca */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={26} color={COLORS.textLight} />
+          <TextInput
+            style={[
+              styles.searchInput,
+              { color: COLORS.text, textAlign: "center" },
+            ]}
+            placeholder="Cerca per titolo o ingrediente..."
+            value={search}
+            onChangeText={setSearch}
+            placeholderTextColor="#999"
           />
 
-          {CATEGORIES.map((cat) => (
-            <CategoryTab
-              key={cat}
-              label={CATEGORY_LABELS[cat]}
-              icon={CATEGORY_IMAGES[cat]}
-              selected={selectedCategory === cat}
-              onPress={() => setSelectedCategory(cat)}
-            />
-          ))}
-        </ScrollView>
-      </View>
-
-      {/* Barra di ricerca */}
-      <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color={COLORS.textLight} />
-        <TextInput
-          style={[styles.searchInput, { color: COLORS.text }]}
-          placeholder="Cerca per titolo o ingrediente..."
-          value={search}
-          onChangeText={setSearch}
-          placeholderTextColor="#999"
-        />
-
-        {search.length > 0 && (
-          <TouchableOpacity onPress={() => setSearch("")}>
-            <Ionicons name="close-circle" size={20} color="#999" />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Lista ricette - card più alte */}
-      <FlatList
-        data={filteredRecipes}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.cardWrapper}>
-            <RecipeCard
-              recipe={item}
-              onPress={() => router.push(`/recipe/${item.id}` as any)}
-            />
-
-            <TouchableOpacity
-              style={styles.dotsButton}
-              onPress={() => setShowOverlayForId(item.id)}
-            >
-              <Ionicons name="ellipsis-vertical" size={24} color="#666" />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch("")}>
+              <Ionicons name="close-circle" size={20} color="#999" />
             </TouchableOpacity>
+          )}
+        </View>
 
-            <RecipeOverlayCard
-              visible={showOverlayForId === item.id}
-              onClose={() => setShowOverlayForId(null)}
-              onEdit={() => router.push(`/edit/${item.id}` as any)}
-              onDelete={() => handleDelete(item.id)}
-              onAddToShopping={() => {
-                try {
-                  addToShoppingList(
-                    item.ingredients.flatMap((group) =>
-                      group.items.map((ing) => ({
-                        ...ing,
-                        checked: false,
-                        linkedRecipeId: ing.linkedRecipeId ?? undefined,
-                      })),
-                    ),
-                  );
+        <FlatList
+          data={filteredRecipes}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <View style={styles.cardWrapper}>
+              <RecipeCard
+                recipe={item}
+                onPress={() => router.push(`/recipe/${item.id}` as any)}
+              />
 
-                  setShowToast(true);
-                  setTimeout(() => setShowToast(false), 1500);
-                } catch (err) {
-                  Alert.alert(
-                    "Errore",
-                    "Impossibile aggiungere gli ingredienti.",
-                  );
-                }
-              }}
-              onRecalculate={() => router.push(`/scale/${item.id}` as any)}
-              onShare={() => router.push(`/recipe/${item.id}?share=1`)}
-            />
-            <SuccessToast visible={showToast} message="Ingredienti aggiunti!" />
-          </View>
-        )}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="restaurant-outline" size={70} color="#ccc" />
-            <Text style={styles.emptyText}>Nessuna ricetta trovata</Text>
-          </View>
-        }
-      />
-    </SafeAreaView>
-    // </ImageBackground>
+              <TouchableOpacity
+                style={styles.dotsButton}
+                onPress={() => setShowOverlayForId(item.id)}
+              >
+                <Ionicons name="ellipsis-vertical" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+          )}
+          contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="restaurant-outline" size={70} color="#ccc" />
+              <Text style={styles.emptyText}>Nessuna ricetta trovata</Text>
+            </View>
+          }
+        />
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
@@ -193,53 +201,20 @@ const styles = StyleSheet.create({
     flex: 1,
     marginBottom: -60,
     paddingTop: 50,
-    backgroundColor: "#fffaf0",
   },
 
   header: {
-    // paddingVertical: 20,
     alignItems: "center",
   },
-  title: { fontSize: 28, padding: 20, textAlign: "center" },
-  categoriesWrapper: {
-    backgroundColor: "#fffaf0",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  icon: {
-    height: 60,
-    width: 60,
-    marginBottom: 10,
-    alignSelf: "center",
-  },
-  categoriesContainer: {
-    paddingHorizontal: 20,
-  },
-  categoryTab: {
-    alignItems: "center",
-    marginRight: 10,
-    paddingHorizontal: 5,
-    width: 70,
-    borderWidth: 1,
-    borderColor: "#000000",
-    backgroundColor: "#fff",
-    borderRadius: 20,
-  },
-  categoryIcon: {
-    width: 48,
-    height: 48,
-    marginBottom: 6,
-    marginTop: 6,
-  },
-  categoryText: {
-    fontSize: 13,
+  title: {
+    fontSize: 30,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
     textAlign: "center",
-    color: COLORS.text,
+    color: "black",
   },
-  categoryTabActive: {
-    borderWidth: 2,
-    borderColor: "#ff0000",
+  categoriesWrapper: {
+    paddingVertical: 12,
   },
 
   searchContainer: {
@@ -301,5 +276,61 @@ const styles = StyleSheet.create({
     // opacity: 0.15, // sfondo delicato e leggibile
   },
 
-  categoryTextActive: {},
+  bg: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+  },
+  content: {
+    flex: 1,
+    padding: 20,
+  },
+  favButton: {
+    position: "absolute",
+    top: 50,
+    left: 20,
+    zIndex: 50,
+    backgroundColor: "white",
+    padding: 8,
+    borderRadius: 30,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+
+  addRecipeButton: {
+    position: "absolute",
+    top: 50,
+    right: 20,
+    zIndex: 50,
+    backgroundColor: "white",
+    padding: 8,
+    borderRadius: 30,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+
+  badge: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    backgroundColor: "#ffffff",
+    borderRadius: 10,
+    paddingHorizontal: 2,
+    minWidth: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+
+  badgeText: {
+    color: COLORS.text,
+    fontSize: 8,
+  },
 });

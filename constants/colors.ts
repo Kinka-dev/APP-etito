@@ -1,11 +1,11 @@
 // src/constants/colors.ts
 export const COLORS = {
-  primary: "#af75a2", // arancione fame
-  primaryDark: "#9e588f",
+  primary: "#c692b2",
+  secondary: "#b292ad",
   background: "#fffaf0",
   card: "#ffffff",
   text: "#2c3e50",
   textLight: "#7f8c8d",
   border: "#ecf0f1",
-  favorite: "#e74c3c",
+  favorite: "#e30000",
 };

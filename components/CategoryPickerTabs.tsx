@@ -1,3 +1,4 @@
+// CategoryPickerTabs.tsx
 import { CATEGORY_IMAGES, CATEGORY_LABELS } from "@/constants/categories";
 import { Category } from "@/src/types";
 import React from "react";
@@ -8,12 +9,14 @@ type Props = {
   value: Category;
   options: Category[];
   onChange: (v: Category) => void;
+  labelStyle?: any;
 };
 
 export default function CategoryPickerTabs({
   value,
   options,
   onChange,
+  labelStyle,
 }: Props) {
   return (
     <ScrollView
@@ -28,6 +31,7 @@ export default function CategoryPickerTabs({
           icon={CATEGORY_IMAGES[opt]} // ⭐ ICONA FINALMENTE PASSATA
           selected={value === opt}
           onPress={() => onChange(opt)}
+          labelStyle={labelStyle}
         />
       ))}
     </ScrollView>

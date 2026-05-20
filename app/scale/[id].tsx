@@ -4,6 +4,7 @@ import { COLORS } from "@/constants/colors";
 import { useRecipeContext } from "@/context/RecipeContext";
 import { IngredientItem, Recipe } from "@/src/types";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -34,6 +35,7 @@ export default function ScaleRecipeScreen() {
   const [animValues, setAnimValues] = useState<Record<string, Animated.Value>>(
     {},
   );
+  const [showTooltip, setShowTooltip] = useState(false);
 
   useEffect(() => {
     const found = recipes.find((r) => r.id === id);
@@ -189,89 +191,127 @@ export default function ScaleRecipeScreen() {
   // ---------------------------------------------------------
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 80 }}
-      >
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#fffaf0" }}>
+      <View style={{ flex: 1, position: "relative" }}>
         {/* BACK */}
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
-          <Text bold style={styles.backButtonText}>
-            Indietro
-          </Text>
+        <TouchableOpacity style={styles.fabBack} onPress={() => router.back()}>
+          <Ionicons name="chevron-back" size={28} color="white" />
         </TouchableOpacity>
-
-        {/* HEADER */}
-        <View style={styles.header}>
+        {/* ⭐ HERO IMAGE */}
+        <View style={styles.heroContainer}>
           <Image
-            source={require("../../assets/images/convertitore.png")}
-            style={styles.icon}
-            resizeMode="contain"
+            source={{ uri: originalRecipe.imageUri }}
+            style={styles.heroImage}
           />
-          <Text variant="title" style={styles.title}>
-            Ricalcola Ricetta
-          </Text>
         </View>
 
-        <Text bold style={styles.subtitle}>
-          {originalRecipe.title}
-        </Text>
-
-        {/* ⭐ PORZIONI FUORI DALLA CARD */}
-        <Text bold style={styles.ingredientsTitle}>
-          Porzioni:
-        </Text>
-        <View style={styles.servingsRow}>
-          <View style={styles.servingsBox}>
-            <Text style={styles.servingsLabel}>Porzioni originali</Text>
-            <Text style={styles.servingsValue}>{originalRecipe.servings}</Text>
+        {/* ⭐ CARD SOVRAPPOSTA */}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          style={styles.overlayCard}
+        >
+          {/* HEADER */}
+          <View style={styles.header}>
+            <Text variant="title" style={styles.title}>
+              Ricalcola Ricetta
+            </Text>
           </View>
 
-          <Text style={styles.arrow}>➜</Text>
+          <TouchableOpacity onPress={() => setShowTooltip(true)}>
+            <Text style={styles.howItWorksButton}>Come funziona?</Text>
+          </TouchableOpacity>
 
-          <View style={styles.servingsBox}>
-            <Text style={styles.servingsLabel}>Nuove porzioni</Text>
-            <TextInput
-              style={styles.servingsInput}
-              value={hasRatio ? newServings : ""}
-              placeholder={hasRatio ? undefined : "—"}
-              onChangeText={onChangeServings}
-              keyboardType="numeric"
-            />
-          </View>
-        </View>
-
-        {/* ⭐ CARD INGREDIENTI */}
-        <View style={styles.summaryCard}>
-          <Text bold style={styles.ingredientsTitle}>
-            Ingredienti:
+          <Text bold style={styles.subtitle}>
+            {originalRecipe.title}
           </Text>
-          <View style={styles.separator} />
 
-          {/* ⭐ INGREDIENTI */}
-          {originalRecipe.ingredients.map((group) =>
-            group.items.map((ing) => {
-              const workingIng = workingRecipe.ingredients
-                .flatMap((g) => g.items)
-                .find((i) => i.id === ing.id);
+          {/* ⭐ Fattore di ricalcolo con frazione */}
+          <View style={styles.factorRow}>
+            <Text bold style={styles.factorLabel}>
+              Fattore di ricalcolo =
+            </Text>
 
-              const newValue = hasRatio ? (workingIng?.quantity ?? "—") : "—";
+            {/* FRAZIONE */}
+            <View style={styles.fractionContainer}>
+              <Text style={styles.fractionTop}>nuova quantità</Text>
+              <View style={styles.fractionLine} />
+              <Text style={styles.fractionBottom}>quantità originale</Text>
+            </View>
 
-              return (
-                <View key={ing.id}>
-                  <View style={styles.row}>
-                    <Text style={styles.rowLabel}>{ing.name}</Text>
+            {/* VALORE ATTUALE */}
+            <Text bold style={styles.factorValue}>
+              ={" "}
+              {hasRatio
+                ? (workingRecipe.servings / originalRecipe.servings).toFixed(3)
+                : "—"}
+            </Text>
+          </View>
 
-                    <View style={styles.colOriginalBox}>
+          <View style={styles.bigCard}>
+            {/* TITOLI COLONNE */}
+            <View style={styles.columnsHeader}>
+              <Text bold style={styles.colTitle}>
+                Originale
+              </Text>
+              <Text bold style={styles.colTitle}>
+                Ricalcolata
+              </Text>
+            </View>
+
+            {/* ⭐ SEPARATORE VERTICALE UNICO */}
+            <View style={styles.verticalSeparator} />
+
+            <View style={styles.row}>
+              <Text bold style={[styles.leftLabel, { color: COLORS.primary }]}>
+                Porzioni
+              </Text>
+
+              {/* Quantità originale */}
+              <View style={styles.colOriginal}>
+                <Text style={styles.originalValue}>
+                  {originalRecipe.servings}
+                </Text>
+              </View>
+
+              {/* Quantità ricalcolata */}
+              <View style={styles.colNew}>
+                <TextInput
+                  style={styles.newValueInput}
+                  value={hasRatio ? newServings : ""}
+                  placeholder={hasRatio ? undefined : "—"}
+                  onChangeText={onChangeServings}
+                  keyboardType="numeric"
+                />
+                <Text style={styles.unitText}></Text>
+              </View>
+            </View>
+
+            {/* INGREDIENTI */}
+            <Text bold style={[styles.sectionTitle, { marginTop: 20 }]}>
+              Ingredienti
+            </Text>
+
+            {originalRecipe.ingredients.map((group) =>
+              group.items.map((ing) => {
+                const workingIng = workingRecipe.ingredients
+                  .flatMap((g) => g.items)
+                  .find((i) => i.id === ing.id);
+
+                const newValue = hasRatio ? (workingIng?.quantity ?? "—") : "—";
+
+                return (
+                  <View key={ing.id} style={styles.row}>
+                    {/* Nome ingrediente */}
+                    <Text style={styles.leftLabel}>{ing.name}</Text>
+
+                    {/* Quantità originale */}
+                    <View style={styles.colOriginal}>
                       <Text style={styles.originalValue}>{ing.quantity}</Text>
                     </View>
-                    <Text style={styles.ingredientArrow}>➜</Text>
 
-                    <View style={styles.colNewBox}>
+                    {/* Quantità ricalcolata */}
+                    <View style={styles.colNew}>
                       <TextInput
                         style={styles.newValueInput}
                         value={newValue === "—" ? "" : newValue}
@@ -279,53 +319,68 @@ export default function ScaleRecipeScreen() {
                         onChangeText={(v) => onChangeIngredient(ing, v)}
                         keyboardType="numeric"
                       />
+                      <Text style={styles.unitText}>{ing.unit}</Text>
                     </View>
-
-                    <Animated.Text
-                      style={[
-                        styles.unit,
-                        {
-                          opacity: animValues[ing.id] ?? 1,
-                          transform: [
-                            {
-                              translateY: animValues[ing.id]
-                                ? animValues[ing.id].interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: [6, 0],
-                                  })
-                                : 0,
-                            },
-                          ],
-                        },
-                      ]}
-                    >
-                      {ing.unit}
-                    </Animated.Text>
+                    <View
+                      style={{
+                        height: 1,
+                        backgroundColor: "#9f9696",
+                      }}
+                    ></View>
                   </View>
-
-                  <View style={styles.ingredientSeparator} />
-                </View>
-              );
-            }),
-          )}
-        </View>
-
-        {/* ⭐ SALVA */}
+                );
+              }),
+            )}
+          </View>
+        </ScrollView>
+        {/* ⭐ FLOATING ACTION BUTTON */}
         <TouchableOpacity
-          style={styles.applyButton}
-          onPress={() =>
+          activeOpacity={0.8}
+          style={styles.fabSave}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             Alert.alert("Salva ricalcolo", "Come vuoi salvare?", [
               { text: "Sovrascrivi", onPress: () => saveChanges() },
               { text: "Salva come nuova", onPress: () => saveChanges(true) },
               { text: "Annulla", style: "cancel" },
-            ])
-          }
+            ]);
+          }}
         >
-          <Text bold style={styles.applyButtonText}>
-            Salva ricalcolo
+          <Text bold style={{ color: "white", fontSize: 14 }}>
+            Salva
           </Text>
         </TouchableOpacity>
-      </ScrollView>
+
+        {showTooltip && (
+          <TouchableOpacity
+            style={styles.tooltipOverlay}
+            activeOpacity={1}
+            onPress={() => setShowTooltip(false)}
+          >
+            <View style={styles.tooltipBox}>
+              <Text bold style={styles.tooltipTitle}>
+                Come funziona
+              </Text>
+
+              <Text style={styles.tooltipText}>
+                Puoi modificare il numero di porzioni oppure inserire la
+                quantità di uno qualsiasi degli ingredienti. Lo strumento
+                ricalcola automaticamente tutta la ricetta in base al valore
+                inserito.
+              </Text>
+
+              <TouchableOpacity
+                style={styles.tooltipClose}
+                onPress={() => setShowTooltip(false)}
+              >
+                <Text bold style={styles.tooltipCloseText}>
+                  Chiudi
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        )}
+      </View>
     </SafeAreaView>
   );
 }
@@ -341,9 +396,13 @@ const styles = StyleSheet.create({
   },
 
   backButton: {
+    width: 50,
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 10,
+    backgroundColor: COLORS.secondary,
+    padding: 10,
+    borderRadius: 30,
   },
 
   backButtonText: {
@@ -356,10 +415,10 @@ const styles = StyleSheet.create({
   icon: { height: 60, width: 60, marginBottom: 10 },
 
   title: {
-    fontSize: 28,
+    fontSize: 30,
     textAlign: "center",
     marginBottom: 4,
-    color: COLORS.primary,
+    color: "black",
   },
 
   subtitle: {
@@ -369,166 +428,286 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
 
-  /* ⭐ PORZIONI FUORI DALLA CARD */
-  servingsRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  fabSave: {
+    position: "absolute",
+    bottom: 24,
+    right: 24,
+    paddingVertical: 6,
+    paddingHorizontal: 15,
+    borderRadius: 30,
+    backgroundColor: COLORS.secondary,
     justifyContent: "center",
-    marginBottom: 24,
-  },
-
-  servingsBox: {
-    backgroundColor: "white",
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    minWidth: 120,
     alignItems: "center",
-  },
-
-  servingsLabel: {
-    fontSize: 14,
-    color: "#777",
-    marginBottom: 4,
-  },
-
-  servingsValue: {
-    fontSize: 20,
-    color: COLORS.primary,
-  },
-
-  servingsInput: {
-    fontSize: 20,
-    color: COLORS.primary,
-    textAlign: "center",
-    paddingVertical: 2,
-  },
-
-  arrow: {
-    fontSize: 28,
-    marginHorizontal: 12,
-    color: COLORS.primary,
-  },
-
-  summaryCard: {
-    backgroundColor: "white",
-    padding: 25,
-    borderRadius: 16,
-    marginBottom: 10,
     shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+    zIndex: 999,
+  },
+
+  fabBack: {
+    position: "absolute",
+    top: 24,
+    left: 24,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRadius: 30,
+    backgroundColor: COLORS.secondary,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+    zIndex: 999,
+  },
+
+  heroContainer: {
+    width: "100%",
+    height: 260,
+    backgroundColor: "#ddd",
+  },
+
+  heroImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+
+  overlayCard: {
+    flex: 1,
+    marginTop: -40, // ⭐ sovrapposizione di 1 cm
+    backgroundColor: "white",
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingHorizontal: 20,
+    paddingTop: 30,
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.05)",
   },
 
-  ingredientsTitle: {
-    fontSize: 18,
-    marginBottom: 20,
-    color: COLORS.primary,
-    textAlign: "center",
+  bigCard: {
+    backgroundColor: "white",
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.05)",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 3,
+    marginTop: 20,
+    position: "relative",
   },
 
   columnsHeader: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-    marginBottom: 10,
-    paddingRight: 60,
+    justifyContent: "space-between",
+    paddingHorizontal: 60, // allinea i titoli sopra le colonne
+    marginBottom: 20,
+    marginLeft: 40,
+    gap: 30,
   },
 
-  colOriginal: {
-    width: 70,
-    textAlign: "center",
-    color: "#555",
-  },
-
-  colNew: {
-    width: 70,
-    textAlign: "center",
+  colTitle: {
+    fontSize: 16,
     color: COLORS.primary,
+  },
+
+  /* ⭐ SEPARATORE VERTICALE UNICO E CENTRATO */
+  verticalSeparator: {
+    position: "absolute",
+    top: 60,
+    bottom: 20,
+    left: 200, // separatore esattamente al centro
+    width: 1,
+    backgroundColor: "#ddd",
+  },
+
+  sectionTitle: {
+    fontSize: 16,
+    color: COLORS.primary,
+    marginBottom: 10,
   },
 
   row: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 10,
+    minHeight: 44,
   },
 
-  rowLabel: {
-    flex: 1,
+  leftLabel: {
+    width: 100,
     fontSize: 15,
     color: COLORS.text,
   },
 
-  colOriginalBox: {
-    width: 60,
-    backgroundColor: "#f3f3f3f3",
-    paddingVertical: 15,
-    borderRadius: 8,
+  /* ⭐ QUANTITÀ ORIGINALE */
+  colOriginal: {
+    width: "20%",
     alignItems: "center",
-    marginRight: 6,
-  },
-
-  colNewBox: {
-    width: 60,
-    backgroundColor: "#fde6ffea",
-    paddingVertical: 6,
-    borderRadius: 8,
-    alignItems: "center",
-    marginHorizontal: 4,
+    justifyContent: "center",
+    marginRight: 20, // distanza dal separatore
   },
 
   originalValue: {
-    fontSize: 16,
+    fontSize: 15,
     color: "#444",
   },
 
+  /* ⭐ QUANTITÀ RICALCOLATA */
+  colNew: {
+    width: "30%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginLeft: 20, // distanza dal separatore
+  },
+
   newValueInput: {
-    fontSize: 16,
+    flex: 1,
+    fontSize: 15,
     color: COLORS.primary,
+    textAlign: "center",
+    fontFamily: "Outfit-SemiBold",
+  },
+
+  unitText: {
+    fontSize: 14,
+    color: "#777",
+    marginLeft: 10,
+  },
+
+  toolDescription: {
+    textAlign: "center",
+    color: "#666",
+    fontSize: 14,
+    marginBottom: 6,
+    paddingHorizontal: 10,
+    lineHeight: 18,
+  },
+
+  formulaText: {
+    textAlign: "center",
+    color: "#444",
+    fontSize: 14,
+    fontStyle: "italic",
+    marginBottom: 4,
+  },
+
+  factorText: {
+    textAlign: "center",
+    color: COLORS.primary,
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 20,
+  },
+
+  howItWorksButton: {
+    textAlign: "center",
+    color: COLORS.textLight,
+    fontSize: 11,
+    marginBottom: 10,
+    textDecorationLine: "underline",
+  },
+
+  tooltipOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+    zIndex: 9999,
+  },
+
+  tooltipBox: {
+    backgroundColor: "white",
+    padding: 20,
+    borderRadius: 16,
+    width: "90%",
+    maxWidth: 380,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+
+  tooltipTitle: {
+    fontSize: 18,
+    color: COLORS.primary,
+    marginBottom: 10,
     textAlign: "center",
   },
 
-  unit: {
-    width: 40,
-    fontSize: 15,
-    color: "#777",
-    textAlign: "left",
-    marginLeft: 6,
-    fontFamily: "Outfit-Regular",
+  tooltipText: {
+    fontSize: 14,
+    color: "#444",
+    lineHeight: 20,
+    marginBottom: 10,
+    textAlign: "center",
   },
 
-  separator: {
-    height: 1,
-    backgroundColor: "#eee",
-    marginBottom: 12,
-  },
-
-  ingredientSeparator: {
-    height: 1,
-    backgroundColor: "#eee",
-  },
-
-  applyButton: {
+  tooltipClose: {
+    marginTop: 10,
+    alignSelf: "center",
     backgroundColor: COLORS.primary,
-    padding: 16,
-    borderRadius: 14,
-    marginTop: 20,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 20,
   },
 
-  applyButtonText: {
+  tooltipCloseText: {
     color: "white",
-    fontSize: 18,
+    fontSize: 14,
   },
-  ingredientArrow: {
+
+  factorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+    flexWrap: "nowrap",
+  },
+
+  factorLabel: {
+    fontSize: 14,
     color: COLORS.primary,
+    marginRight: 8,
+  },
+
+  fractionContainer: {
+    alignItems: "center",
+  },
+
+  fractionTop: {
+    fontSize: 11,
+    color: COLORS.textLight,
+    marginBottom: 2,
+  },
+
+  fractionLine: {
+    width: 90,
+    height: 1.5,
+    backgroundColor: COLORS.textLight,
+  },
+
+  fractionBottom: {
+    fontSize: 11,
+    color: COLORS.textLight,
+  },
+
+  factorValue: {
+    fontSize: 16,
+    color: COLORS.primary,
+    marginLeft: 8,
   },
 });
