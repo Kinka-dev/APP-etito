@@ -40,6 +40,13 @@
           }
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notifications/notification-icon.png",
+          "sounds": ["./assets/notifications/timer_end.wav"]
+        }
+      ],
       "expo-font"
     ],
     "experiments": {

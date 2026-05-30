@@ -61,6 +61,7 @@ export default function RecipesScreen() {
     return recipes.filter((recipe) => {
       const matchesCategory =
         selectedCategory === "all" || recipe.category === selectedCategory;
+
       const matchesSearch =
         !lowerSearch ||
         recipe.title.toLowerCase().includes(lowerSearch) ||
@@ -68,7 +69,8 @@ export default function RecipesScreen() {
           group.items.some((ing) =>
             ing.name.toLowerCase().includes(lowerSearch),
           ),
-        );
+        ) ||
+        recipe.tags?.some((tag) => tag.toLowerCase().includes(lowerSearch));
 
       return matchesCategory && matchesSearch;
     });
@@ -93,7 +95,7 @@ export default function RecipesScreen() {
 
   return (
     <ImageBackground
-      source={require("../../assets/images/sfondo.png")}
+      source={require("../../assets/images/sfondo1.png")}
       style={styles.bg}
       resizeMode="cover"
     >
@@ -107,26 +109,6 @@ export default function RecipesScreen() {
             color={favCount > 0 ? "#ff4d6d" : COLORS.primary}
           />
         </TouchableOpacity>
-
-        {/* ⭐ Badge rosso */}
-        {favCount > 0 && (
-          <View style={styles.badge}>
-            <Text bold style={styles.badgeText}>
-              {favCount}
-            </Text>
-          </View>
-        )}
-      </Animated.View>
-      <Animated.View
-        style={[styles.addRecipeButton, { transform: [{ scale: bounce }] }]}
-      >
-        <TouchableOpacity onPress={() => router.push("/add")}>
-          <Ionicons
-            name={"add-circle-outline"}
-            size={24}
-            color={COLORS.primary}
-          />
-        </TouchableOpacity>
       </Animated.View>
       <SafeAreaView style={styles.container}>
         {/* Header */}
@@ -136,23 +118,24 @@ export default function RecipesScreen() {
           </Text>
         </View>
 
-        <View style={styles.categoriesWrapper}>
-          <CategoryTabsCarousel
-            categories={CATEGORY_ITEMS}
-            selected={selectedCategory}
-            onSelect={setSelectedCategory}
-          />
-        </View>
-
         {/* Barra di ricerca */}
         <View style={styles.searchContainer}>
-          <Ionicons name="search" size={26} color={COLORS.textLight} />
+          <Ionicons
+            name="search"
+            size={26}
+            color="white"
+            backgroundColor={COLORS.primary}
+            padding={13}
+            borderTopLeftRadius={30}
+            borderBottomLeftRadius={30}
+            marginLeft={-13}
+          />
           <TextInput
             style={[
               styles.searchInput,
               { color: COLORS.text, textAlign: "center" },
             ]}
-            placeholder="Cerca per titolo o ingrediente..."
+            placeholder="Cerca per titolo, ingrediente o tag..."
             value={search}
             onChangeText={setSearch}
             placeholderTextColor="#999"
@@ -165,6 +148,14 @@ export default function RecipesScreen() {
           )}
         </View>
 
+        <View style={styles.categoriesWrapper}>
+          <CategoryTabsCarousel
+            categories={CATEGORY_ITEMS}
+            selected={selectedCategory}
+            onSelect={setSelectedCategory}
+          />
+        </View>
+
         <FlatList
           data={filteredRecipes}
           keyExtractor={(item) => item.id}
@@ -174,13 +165,6 @@ export default function RecipesScreen() {
                 recipe={item}
                 onPress={() => router.push(`/recipe/${item.id}` as any)}
               />
-
-              <TouchableOpacity
-                style={styles.dotsButton}
-                onPress={() => setShowOverlayForId(item.id)}
-              >
-                <Ionicons name="ellipsis-vertical" size={24} color="#666" />
-              </TouchableOpacity>
             </View>
           )}
           contentContainerStyle={styles.list}
@@ -200,7 +184,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     marginBottom: -60,
-    paddingTop: 50,
+    paddingTop: 20,
+    backgroundColor: "white",
   },
 
   header: {
@@ -214,7 +199,7 @@ const styles = StyleSheet.create({
     color: "black",
   },
   categoriesWrapper: {
-    paddingVertical: 12,
+    paddingVertical: 5,
   },
 
   searchContainer: {
@@ -222,8 +207,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "white",
     margin: 16,
+    marginBottom: 8,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 30,
     elevation: 2,
     color: COLORS.text,
   },
@@ -288,10 +274,10 @@ const styles = StyleSheet.create({
   favButton: {
     position: "absolute",
     top: 50,
-    left: 20,
+    right: 20,
     zIndex: 50,
-    backgroundColor: "white",
     padding: 8,
+    backgroundColor: "white",
     borderRadius: 30,
     shadowColor: "#000",
     shadowOpacity: 0.1,
@@ -315,12 +301,10 @@ const styles = StyleSheet.create({
 
   badge: {
     position: "absolute",
-    top: -8,
-    right: -8,
+    top: 20,
+    right: 0,
     backgroundColor: "#ffffff",
-    borderRadius: 10,
-    paddingHorizontal: 2,
-    minWidth: 15,
+    borderRadius: 30,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",

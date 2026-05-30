@@ -1,14 +1,15 @@
 // app/recipe/[id].tsx
-import { DynamicImage } from "@/components/DynamicImage";
 import PieChartMini from "@/components/PieChart";
+import { IngredientsModal } from "@/components/RecipeCard";
 import SuccessToast from "@/components/SuccessToast";
 import Text from "@/components/Text";
+import { CATEGORY_LABELS } from "@/constants/categories";
 import { COLORS } from "@/constants/colors";
 import { useRecipeContext } from "@/context/RecipeContext";
 import { Recipe } from "@/src/types";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Image,
@@ -19,13 +20,20 @@ import {
   View,
 } from "react-native";
 import ImageViewer from "react-native-image-zoom-viewer";
+import Animated, {
+  Easing,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { shareRecipePDF } from "../utils/shareRecipePDF";
 
 type IngredientItem = {
   id: string;
   name: string;
-  quantity: string;
+  quantity: number | "";
   unit: string;
   linkedRecipeId?: string | null;
   kcal?: number;
@@ -70,7 +78,11 @@ export default function RecipeDetailScreen() {
     "ingredients",
   );
 
+  const [modalVisible, setModalVisible] = useState(false);
+
   const share = params.share;
+  const fadeIn = useSharedValue(0);
+  const slideUp = useSharedValue(0);
 
   // Estrai tutti gli ingredienti della ricetta
 
@@ -92,6 +104,28 @@ export default function RecipeDetailScreen() {
       </View>
     );
   }
+
+  useEffect(() => {
+    fadeIn.value = withTiming(1, { duration: 350 });
+
+    slideUp.value = withTiming(1, {
+      duration: 1000,
+      easing: Easing.bezier(0.22, 1, 0.56, 1),
+    });
+  }, []);
+
+  const heroStyle = useAnimatedStyle(() => ({
+    opacity: fadeIn.value,
+  }));
+
+  const cardStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY: interpolate(slideUp.value, [0, 1], [500, 0]),
+      },
+    ],
+    opacity: slideUp.value,
+  }));
 
   const flatIngredients = recipe.ingredients.flatMap((group) => group.items);
 
@@ -136,12 +170,12 @@ export default function RecipeDetailScreen() {
 
     ingredientGroups.forEach((group) => {
       group.items.forEach((ing) => {
-        const q = parseFloat(ing.quantity) || 0;
+        const q = Number(ing.quantity) || 0;
 
-        acc.kcal += (ing.kcal || 0) * q;
-        acc.carbs += (ing.carbs || 0) * q;
-        acc.protein += (ing.protein || 0) * q;
-        acc.fat += (ing.fat || 0) * q;
+        acc.kcal += ((ing.kcal || 0) * q) / 100;
+        acc.carbs += ((ing.carbs || 0) * q) / 100;
+        acc.protein += ((ing.protein || 0) * q) / 100;
+        acc.fat += ((ing.fat || 0) * q) / 100;
       });
     });
 
@@ -192,408 +226,633 @@ export default function RecipeDetailScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* ⭐ FOTO PRINCIPALE */}
-      <View style={styles.heroContainer}>
-        <Image
-          source={
-            recipe.imageUri
-              ? { uri: recipe.imageUri }
-              : require("../../assets/images/default.jpg")
-          }
-          style={styles.heroImage}
-          resizeMode="cover"
-        />
+      <ScrollView>
+        <Animated.View style={[styles.heroContainer, heroStyle]}>
+          <Image
+            source={
+              recipe.imageUri
+                ? { uri: recipe.imageUri }
+                : require("../../assets/images/default.jpg")
+            }
+            style={styles.heroImage}
+            resizeMode="cover"
+          />
 
-        {/* FRECCIA SINISTRA */}
-        {prevRecipe && (
-          <TouchableOpacity
-            style={styles.arrowLeft}
-            onPress={() => router.push(`/recipe/${prevRecipe.id}`)}
-          >
-            <Ionicons name="chevron-back" size={34} color="#000000" />
-          </TouchableOpacity>
-        )}
-
-        {/* FRECCIA DESTRA */}
-        {nextRecipe && (
-          <TouchableOpacity
-            style={styles.arrowRight}
-            onPress={() => router.push(`/recipe/${nextRecipe.id}`)}
-          >
-            <Ionicons name="chevron-forward" size={34} color="#000000" />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* ⭐ CARD SOVRAPPOSTA */}
-      <ScrollView style={styles.cardScroll}>
-        <View style={styles.card}>
-          {/* TITOLO */}
-          <Text variant="title" style={styles.title}>
-            {recipe.title}
-          </Text>
-          <View style={styles.infoRow}>
-            <Text
-              bold
-              style={[
-                styles.infoValue,
-                {
-                  color: COLORS.primary,
-                },
-              ]}
-            >
-              ••• {recipe.category} •••
-            </Text>
-          </View>
-
-          {/* INFO IN RIGA */}
-          <View style={styles.infoRow}>
-            <Ionicons name="time-outline" size={20} color={COLORS.primary} />
-            <Text bold style={styles.infoValue}>
-              {recipe.prepTime} min
-            </Text>
-
-            <Ionicons name="people-outline" size={20} color={COLORS.primary} />
-            <Text bold style={styles.infoValue}>
-              {recipe.servings} porzioni
-            </Text>
-          </View>
-
-          {/* TAGS */}
-          {recipe.tags && recipe.tags.length > 0 && (
-            <View style={styles.tagsContainer}>
-              {recipe.tags.map((tag, i) => (
-                <View key={i} style={styles.tag}>
-                  <Text style={styles.tagText}>#{tag}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {/* ⭐ NOTE INTEGRATE */}
-          {recipe.notes?.text && (
-            <View style={styles.notesInline}>
-              <Text variant="heading" style={styles.sectionTitle}>
-                Note e Curiosità
-              </Text>
-              <Text style={styles.notesInlineText}>{recipe.notes.text}</Text>
-            </View>
-          )}
-
-          {/* ⭐ TABS */}
-          <View style={styles.tabsContainer}>
+          {/* FRECCIA SINISTRA */}
+          {prevRecipe && (
             <TouchableOpacity
-              style={[
-                styles.tab,
-                activeTab === "ingredients" && styles.tabActive,
-              ]}
-              onPress={() => setActiveTab("ingredients")}
+              style={styles.arrowLeft}
+              onPress={() => router.push(`/recipe/${prevRecipe.id}`)}
             >
+              <Ionicons name="chevron-back" size={34} color="#000000" />
+            </TouchableOpacity>
+          )}
+
+          {/* FRECCIA DESTRA */}
+          {nextRecipe && (
+            <TouchableOpacity
+              style={styles.arrowRight}
+              onPress={() => router.push(`/recipe/${nextRecipe.id}`)}
+            >
+              <Ionicons name="chevron-forward" size={34} color="#000000" />
+            </TouchableOpacity>
+          )}
+        </Animated.View>
+
+        {/* ⭐ CARD SOVRAPPOSTA */}
+        <Animated.View style={[styles.cardScroll, cardStyle]}>
+          <View style={styles.card}>
+            {/* TITOLO */}
+            <Text variant="title" style={styles.title}>
+              {recipe.title}
+            </Text>
+            <View style={styles.infoRow}>
               <Text
                 bold
                 style={[
-                  styles.tabLabel,
-                  activeTab === "ingredients" && styles.tabLabelActive,
+                  styles.infoValue,
+                  {
+                    color: COLORS.primary,
+                  },
                 ]}
               >
-                Ingredienti
+                ••• {CATEGORY_LABELS[recipe.category]} •••
               </Text>
-            </TouchableOpacity>
+            </View>
 
-            <TouchableOpacity
-              style={[styles.tab, activeTab === "steps" && styles.tabActive]}
-              onPress={() => setActiveTab("steps")}
-            >
-              <Text
-                bold
+            {/* INFO IN RIGA */}
+            <View style={styles.infoRow}>
+              <Ionicons name="time-outline" size={20} color={COLORS.primary} />
+              <Text bold style={styles.infoValue}>
+                {recipe.prepTime} min
+              </Text>
+
+              <Ionicons
+                name="people-outline"
+                size={20}
+                color={COLORS.primary}
+              />
+              <Text bold style={styles.infoValue}>
+                {recipe.servings} porzioni
+              </Text>
+            </View>
+
+            {/* TAGS */}
+            {recipe.tags && recipe.tags.length > 0 && (
+              <View style={styles.tagsContainer}>
+                {recipe.tags.map((tag, i) => (
+                  <View key={i} style={styles.tag}>
+                    <Text style={styles.tagText}>#{tag}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* ⭐ NOTE INTEGRATE */}
+            {recipe.notes?.text && (
+              <View style={styles.notesInline}>
+                <Text variant="heading" style={styles.sectionTitle}>
+                  Note e Curiosità
+                </Text>
+                <Text style={styles.notesInlineText}>{recipe.notes.text}</Text>
+              </View>
+            )}
+
+            {/* ⭐ TABS */}
+            <View style={styles.tabsContainer}>
+              <TouchableOpacity
                 style={[
-                  styles.tabLabel,
-                  activeTab === "steps" && styles.tabLabelActive,
+                  styles.tab,
+                  activeTab === "ingredients" && styles.tabActive,
                 ]}
+                onPress={() => setActiveTab("ingredients")}
               >
-                Procedimento
-              </Text>
-            </TouchableOpacity>
-          </View>
+                <Text
+                  bold
+                  style={[
+                    styles.tabLabel,
+                    activeTab === "ingredients" && styles.tabLabelActive,
+                  ]}
+                >
+                  Ingredienti
+                </Text>
+              </TouchableOpacity>
 
-          {/* ⭐ CONTENUTO TAB */}
-          {activeTab === "ingredients" && (
-            <View style={styles.section}>
-              {/* ⭐ INGREDIENTI */}
-              {(recipe.ingredientsPhoto ||
+              <TouchableOpacity
+                style={[styles.tab, activeTab === "steps" && styles.tabActive]}
+                onPress={() => setActiveTab("steps")}
+              >
+                <Text
+                  bold
+                  style={[
+                    styles.tabLabel,
+                    activeTab === "steps" && styles.tabLabelActive,
+                  ]}
+                >
+                  Procedimento
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* ⭐ CONTENUTO TAB — INGREDIENTI */}
+            {activeTab === "ingredients" && (
+              <View style={styles.section}>
+                {recipe.ingredientsPhoto ||
                 ungroupedIngredients.length > 0 ||
-                ingredientGroups.some((g) => g.items.length > 0)) && (
-                <View style={styles.section}>
-                  <Text variant="heading" style={styles.sectionTitle}>
-                    Ingredienti
-                  </Text>
+                ingredientGroups.some((g) => g.items.length > 0) ? (
+                  <>
+                    <Text variant="heading" style={styles.sectionTitle}>
+                      Ingredienti
+                    </Text>
 
-                  {/* FOTO OCR INGREDIENTI */}
-                  {recipe.ingredientsPhoto && (
-                    <DynamicImage
-                      uri={recipe.ingredientsPhoto}
-                      onOpenFull={() =>
-                        setFullImage(recipe.ingredientsPhoto ?? null)
-                      }
-                    />
-                  )}
+                    {/* FOTO OCR INGREDIENTI
+                    {recipe.ingredientsPhoto && (
+                      <DynamicImage
+                        uri={recipe.ingredientsPhoto}
+                        onOpenFull={() =>
+                          setFullImage(recipe.ingredientsPhoto ?? null)
+                        }
+                      />
+                    )} */}
 
-                  {/* LISTA INGREDIENTI */}
-                  {ungroupedIngredients.length > 0 &&
-                    ungroupedIngredients.map((ing, index) => {
-                      const key = `free-${index}`;
-                      const isChecked = checkedIngredients[key] || false;
+                    {/* LISTA INGREDIENTI LIBERI */}
+                    {ungroupedIngredients.length > 0 &&
+                      ungroupedIngredients.map((ing, index) => {
+                        const key = `free-${index}`;
+                        const isChecked = checkedIngredients[key] || false;
 
-                      return (
-                        <>
-                          <View key={ing.id} style={styles.ingredientRow}>
-                            <TouchableOpacity
-                              style={styles.checkbox}
-                              onPress={() => toggleIngredientCheck(key)}
-                            >
-                              <Ionicons
-                                name={isChecked ? "checkbox" : "square-outline"}
-                                size={26}
-                                color={isChecked ? "#3a8654" : "#666"}
-                              />
-                            </TouchableOpacity>
-
-                            <View style={styles.ingredientMain}>
-                              <Text
-                                style={[
-                                  styles.ingredientName,
-                                  isChecked && styles.checkedText,
-                                ]}
+                        return (
+                          <Fragment key={ing.id}>
+                            <View style={styles.ingredientRow}>
+                              <TouchableOpacity
+                                style={styles.checkbox}
+                                onPress={() => toggleIngredientCheck(key)}
                               >
-                                {ing.name}
+                                <Ionicons
+                                  name={
+                                    isChecked ? "checkbox" : "square-outline"
+                                  }
+                                  size={26}
+                                  color={isChecked ? "#3a8654" : "#666"}
+                                />
+                              </TouchableOpacity>
+
+                              <View style={styles.ingredientMain}>
+                                <Text
+                                  style={[
+                                    styles.ingredientName,
+                                    isChecked && styles.checkedText,
+                                  ]}
+                                >
+                                  {ing.name}
+                                </Text>
+                              </View>
+
+                              <Text style={styles.quantityText}>
+                                {`${ing.quantity} ${ing.unit}`}
                               </Text>
                             </View>
 
-                            <Text style={styles.quantityText}>
-                              {ing.quantity} {ing.unit}
-                            </Text>
-                          </View>
-                          {showMacros &&
-                            (ing.kcal ||
-                              ing.carbs ||
-                              ing.protein ||
-                              ing.fat) && (
-                              <Text
-                                style={{
-                                  fontSize: 12,
-                                  color: COLORS.secondary,
-                                  marginTop: 2,
-                                  marginLeft: 40,
-                                }}
-                              >
-                                {ing.kcal ?? 0} kcal · C {ing.carbs ?? 0}g · P{" "}
-                                {ing.protein ?? 0}g · F {ing.fat ?? 0}g
-                              </Text>
-                            )}
-                        </>
-                      );
-                    })}
-
-                  {/* GRUPPI */}
-                  {ingredientGroups
-                    .filter((g) => g.id !== "ungrouped" && g.items.length > 0)
-                    .map((group, groupIndex) => (
-                      <View key={group.id} style={{ marginBottom: 20 }}>
-                        <Text variant="title" style={styles.ingredientGroup}>
-                          {group.title}
-                        </Text>
-
-                        {group.items.map((ing, index) => {
-                          const key = `${groupIndex}-${index}`;
-                          const isChecked = checkedIngredients[key] || false;
-
-                          return (
-                            <>
-                              <View key={ing.id} style={styles.ingredientRow}>
-                                <TouchableOpacity
-                                  style={styles.checkbox}
-                                  onPress={() => toggleIngredientCheck(key)}
+                            {showMacros &&
+                              (ing.kcal ||
+                                ing.carbs ||
+                                ing.protein ||
+                                ing.fat) && (
+                                <View
+                                  style={{
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    flexWrap: "wrap",
+                                    marginTop: 4,
+                                    marginLeft: 40,
+                                    gap: 6,
+                                  }}
                                 >
-                                  <Ionicons
-                                    name={
-                                      isChecked ? "checkbox" : "square-outline"
-                                    }
-                                    size={26}
-                                    color={isChecked ? "#3a8654" : "#666"}
-                                  />
-                                </TouchableOpacity>
-
-                                <View style={styles.ingredientMain}>
-                                  <Text
-                                    style={[
-                                      styles.ingredientName,
-                                      isChecked && styles.checkedText,
-                                    ]}
+                                  {/* KCAL */}
+                                  <View
+                                    style={{
+                                      backgroundColor: "#d70000",
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 2,
+                                      borderRadius: 20,
+                                    }}
                                   >
-                                    {ing.name}
+                                    <Text
+                                      bold
+                                      style={{
+                                        fontSize: 11,
+                                        color: "white",
+                                      }}
+                                    >
+                                      {(ing.kcal ?? 0).toFixed(1)} kcal
+                                    </Text>
+                                  </View>
+
+                                  {/* CARBOIDRATI */}
+                                  <View
+                                    style={{
+                                      backgroundColor: "#00a56e",
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 2,
+                                      borderRadius: 20,
+                                    }}
+                                  >
+                                    <Text
+                                      bold
+                                      style={{
+                                        fontSize: 11,
+                                        color: "white",
+                                      }}
+                                    >
+                                      C {(ing.carbs ?? 0).toFixed(1)}g
+                                    </Text>
+                                  </View>
+
+                                  {/* PROTEINE */}
+                                  <View
+                                    style={{
+                                      backgroundColor: "#b292ad",
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 2,
+                                      borderRadius: 20,
+                                    }}
+                                  >
+                                    <Text
+                                      bold
+                                      style={{
+                                        fontSize: 11,
+                                        color: "white",
+                                      }}
+                                    >
+                                      P {(ing.protein ?? 0).toFixed(1)}g
+                                    </Text>
+                                  </View>
+
+                                  {/* GRASSI */}
+                                  <View
+                                    style={{
+                                      backgroundColor: "#ffc800",
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 2,
+                                      borderRadius: 20,
+                                    }}
+                                  >
+                                    <Text
+                                      bold
+                                      style={{
+                                        fontSize: 11,
+                                        color: "white",
+                                      }}
+                                    >
+                                      G {(ing.fat ?? 0).toFixed(1)}g
+                                    </Text>
+                                  </View>
+                                </View>
+                              )}
+                          </Fragment>
+                        );
+                      })}
+
+                    {/* GRUPPI DI INGREDIENTI */}
+                    {ingredientGroups
+                      .filter((g) => g.id !== "ungrouped" && g.items.length > 0)
+                      .map((group, groupIndex) => (
+                        <View key={group.id} style={{ marginBottom: 20 }}>
+                          <Text variant="title" style={styles.ingredientGroup}>
+                            {group.title}
+                          </Text>
+
+                          {group.items.map((ing, index) => {
+                            const key = `${groupIndex}-${index}`;
+                            const isChecked = checkedIngredients[key] || false;
+
+                            return (
+                              <Fragment key={ing.id}>
+                                <View style={styles.ingredientRow}>
+                                  <TouchableOpacity
+                                    style={styles.checkbox}
+                                    onPress={() => toggleIngredientCheck(key)}
+                                  >
+                                    <Ionicons
+                                      name={
+                                        isChecked
+                                          ? "checkbox"
+                                          : "square-outline"
+                                      }
+                                      size={26}
+                                      color={isChecked ? "#3a8654" : "#666"}
+                                    />
+                                  </TouchableOpacity>
+
+                                  <View style={styles.ingredientMain}>
+                                    <Text
+                                      style={[
+                                        styles.ingredientName,
+                                        isChecked && styles.checkedText,
+                                      ]}
+                                    >
+                                      {ing.name}
+                                    </Text>
+                                  </View>
+
+                                  <Text style={styles.quantityText}>
+                                    {`${ing.quantity} ${ing.unit}`}
                                   </Text>
                                 </View>
 
-                                <Text style={styles.quantityText}>
-                                  {ing.quantity} {ing.unit}
-                                </Text>
-                              </View>
-                              {showMacros &&
-                                (ing.kcal ||
-                                  ing.carbs ||
-                                  ing.protein ||
-                                  ing.fat) && (
-                                  <Text
-                                    style={{
-                                      fontSize: 12,
-                                      color: COLORS.secondary,
-                                      marginTop: 2,
-                                      marginLeft: 40,
-                                    }}
-                                  >
-                                    {ing.kcal ?? 0} kcal · C {ing.carbs ?? 0}g ·
-                                    P {ing.protein ?? 0}g · F {ing.fat ?? 0}g
-                                  </Text>
-                                )}
-                            </>
-                          );
-                        })}
-                      </View>
-                    ))}
-                </View>
-              )}
-              {/* ⭐ TOGGLE MACRO */}
-              <TouchableOpacity
-                onPress={() => setShowMacros(!showMacros)}
-                style={{
-                  paddingVertical: 8,
-                  paddingHorizontal: 12,
-                  backgroundColor: COLORS.primary,
-                  borderRadius: 30,
-                  alignSelf: "flex-end",
-                  marginBottom: 10,
-                }}
-              >
-                <Text bold style={{ color: "white", fontSize: 12 }}>
-                  {showMacros
-                    ? "Nascondi valori nutrizionali"
-                    : "Mostra valori nutrizionali"}
-                </Text>
-              </TouchableOpacity>
-              {showMacros && (
-                <>
-                  <View style={{ marginTop: 20, marginBottom: 10 }}>
-                    <Text
+                                {showMacros &&
+                                  (ing.kcal ||
+                                    ing.carbs ||
+                                    ing.protein ||
+                                    ing.fat) && (
+                                    <View
+                                      style={{
+                                        flexDirection: "row",
+                                        alignItems: "center",
+                                        flexWrap: "wrap",
+                                        marginTop: 4,
+                                        marginLeft: 40,
+                                        gap: 6,
+                                      }}
+                                    >
+                                      {/* KCAL */}
+                                      <View
+                                        style={{
+                                          backgroundColor: "#d70000",
+                                          paddingHorizontal: 8,
+                                          paddingVertical: 2,
+                                          borderRadius: 20,
+                                        }}
+                                      >
+                                        <Text
+                                          bold
+                                          style={{
+                                            fontSize: 11,
+                                            color: "white",
+                                          }}
+                                        >
+                                          {(ing.kcal ?? 0).toFixed(1)} kcal
+                                        </Text>
+                                      </View>
+
+                                      {/* CARBOIDRATI */}
+                                      <View
+                                        style={{
+                                          backgroundColor: "#00a56e", // verde chiaro
+                                          paddingHorizontal: 8,
+                                          paddingVertical: 2,
+                                          borderRadius: 20,
+                                        }}
+                                      >
+                                        <Text
+                                          bold
+                                          style={{
+                                            fontSize: 11,
+                                            color: "white",
+                                          }}
+                                        >
+                                          C {(ing.carbs ?? 0).toFixed(1)}g
+                                        </Text>
+                                      </View>
+
+                                      {/* PROTEINE */}
+                                      <View
+                                        style={{
+                                          backgroundColor: "#b292ad", // blu chiaro
+                                          paddingHorizontal: 8,
+                                          paddingVertical: 2,
+                                          borderRadius: 20,
+                                        }}
+                                      >
+                                        <Text
+                                          bold
+                                          style={{
+                                            fontSize: 11,
+                                            color: "white",
+                                          }}
+                                        >
+                                          P {(ing.protein ?? 0).toFixed(1)}g
+                                        </Text>
+                                      </View>
+
+                                      {/* GRASSI */}
+                                      <View
+                                        style={{
+                                          backgroundColor: "#ffc800", // rosa chiaro
+                                          paddingHorizontal: 8,
+                                          paddingVertical: 2,
+                                          borderRadius: 20,
+                                        }}
+                                      >
+                                        <Text
+                                          bold
+                                          style={{
+                                            fontSize: 11,
+                                            color: "white",
+                                          }}
+                                        >
+                                          G {(ing.fat ?? 0).toFixed(1)}g
+                                        </Text>
+                                      </View>
+                                    </View>
+                                  )}
+                              </Fragment>
+                            );
+                          })}
+                        </View>
+                      ))}
+
+                    {/* ⭐ TOGGLE MACRO */}
+                    <TouchableOpacity
+                      onPress={() => setShowMacros(!showMacros)}
                       style={{
-                        fontSize: 18,
-                        fontWeight: "600",
-                        textAlign: "center",
+                        paddingVertical: 8,
+                        paddingHorizontal: 12,
+                        backgroundColor: COLORS.primary,
+                        borderRadius: 30,
+                        alignSelf: "flex-end",
+                        marginBottom: 10,
+                        marginTop: 20,
                       }}
                     >
-                      Valori nutrizionali totali
-                    </Text>
-                    <Text
-                      bold
-                      style={{
-                        fontSize: 15,
-                        color: COLORS.secondary,
-                        marginTop: 4,
-                        textAlign: "center",
-                      }}
-                    >
-                      {totalKcal} kcal · C {totalCarbs}g · P {totalProtein}g · F{" "}
-                      {totalFat}g
-                    </Text>
-                  </View>
-                  <View style={{ marginTop: 20, alignItems: "center" }}>
-                    <PieChartMini
-                      carbs={totalCarbs}
-                      protein={totalProtein}
-                      fat={totalFat}
-                      size={140} // puoi aumentare o diminuire
-                    />
-                  </View>
-                </>
-              )}
-            </View>
-          )}
+                      <Text bold style={{ color: "white", fontSize: 12 }}>
+                        {showMacros
+                          ? "Nascondi valori nutrizionali"
+                          : "Mostra valori nutrizionali"}
+                      </Text>
+                    </TouchableOpacity>
 
-          {activeTab === "steps" && (
-            <View style={styles.section}>
-              <Text variant="heading" style={styles.sectionTitle}>
-                Procedimento
-              </Text>
+                    {showMacros && (
+                      <>
+                        <View style={{ marginTop: 20, marginBottom: 10 }}>
+                          <Text
+                            bold
+                            style={{
+                              fontSize: 16,
+                              fontWeight: "600",
+                              textAlign: "center",
+                            }}
+                          >
+                            Valori nutrizionali totali
+                          </Text>
+                          <Text
+                            bold
+                            style={{
+                              fontSize: 15,
+                              color: COLORS.secondary,
+                              marginTop: 4,
+                              textAlign: "center",
+                            }}
+                          >
+                            Calorie: {totalKcal.toFixed(1)} kcal
+                          </Text>
+                          <Text
+                            bold
+                            style={{
+                              fontSize: 15,
+                              color: COLORS.secondary,
+                              marginTop: 4,
+                              textAlign: "center",
+                            }}
+                          >
+                            Carboidrati: {totalCarbs.toFixed(1)}g
+                          </Text>
+                          <Text
+                            bold
+                            style={{
+                              fontSize: 15,
+                              color: COLORS.secondary,
+                              marginTop: 4,
+                              textAlign: "center",
+                            }}
+                          >
+                            Proteine: {totalProtein.toFixed(1)}g
+                          </Text>
+                          <Text
+                            bold
+                            style={{
+                              fontSize: 15,
+                              color: COLORS.secondary,
+                              marginTop: 4,
+                              textAlign: "center",
+                            }}
+                          >
+                            Grassi: {totalFat.toFixed(1)}g
+                          </Text>
+                        </View>
 
-              {recipe.steps.map((step, index) => {
-                const isChecked = checkedSteps[index] || false;
-
-                return (
-                  <View key={index} style={styles.stepVerticalCard}>
-                    <View>
-                      {/* Numero step */}
-                      <View style={styles.stepNumberCircle}>
-                        <Text style={styles.stepNumberText}>{index + 1}</Text>
-                      </View>
-
-                      {/* Titolo */}
-                      {step.title?.trim().length > 0 && (
-                        <Text bold style={styles.stepTitle}>
-                          {step.title}
-                        </Text>
-                      )}
-                    </View>
-
-                    {/* Descrizione */}
-                    <Text
-                      style={[styles.stepText, isChecked && styles.checkedText]}
-                    >
-                      {step.description}
-                    </Text>
-
-                    {/* Immagini */}
-                    {step.imageUri && (
-                      <Image
-                        source={{ uri: step.imageUri }}
-                        style={styles.stepVerticalImage}
-                      />
+                        <View style={{ marginTop: 20, alignItems: "center" }}>
+                          <PieChartMini
+                            carbs={totalCarbs}
+                            protein={totalProtein}
+                            fat={totalFat}
+                            size={140}
+                          />
+                        </View>
+                      </>
                     )}
-
-                    {step.textImageUri && (
-                      <Image
-                        source={{ uri: step.textImageUri }}
-                        style={styles.stepVerticalImage}
-                      />
-                    )}
+                  </>
+                ) : (
+                  <View style={styles.emptyPlaceholder}>
+                    <Ionicons name="leaf-outline" size={40} color="#bbb" />
+                    <Text style={styles.emptyPlaceholderText}>
+                      Nessun ingrediente presente
+                    </Text>
                   </View>
-                );
-              })}
-            </View>
-          )}
+                )}
+              </View>
+            )}
+            {/* ⭐ CONTENUTO TAB — PROCEDIMENTO */}
+            {activeTab === "steps" && (
+              <View style={styles.section}>
+                {recipe.steps.length > 0 ? (
+                  <>
+                    <Text variant="heading" style={styles.sectionTitle}>
+                      Procedimento
+                    </Text>
 
-          <SuccessToast
-            visible={toastVisible}
-            message="Ingredienti aggiunti alla spesa"
-          />
+                    {recipe.steps.map((step, index) => {
+                      const isChecked = checkedSteps[index] || false;
 
-          {/* MODALE IMMAGINE FULLSCREEN */}
-          <Modal visible={!!fullImage} transparent={true}>
-            <ImageViewer
-              imageUrls={[{ url: fullImage! }]}
-              enableSwipeDown
-              onSwipeDown={() => setFullImage(null)}
-              onCancel={() => setFullImage(null)}
-              renderIndicator={() => <View />}
-              backgroundColor="rgba(0,0,0,0.95)"
-              saveToLocalByLongPress={false}
+                      return (
+                        <View key={index} style={styles.stepVerticalCard}>
+                          <View>
+                            <View style={styles.stepNumberCircle}>
+                              <Text style={styles.stepNumberText}>
+                                {index + 1}
+                              </Text>
+                            </View>
+
+                            {step.title?.trim().length > 0 && (
+                              <Text bold style={styles.stepTitle}>
+                                {step.title}
+                              </Text>
+                            )}
+                          </View>
+
+                          <Text
+                            style={[
+                              styles.stepText,
+                              isChecked && styles.checkedText,
+                            ]}
+                          >
+                            {step.description}
+                          </Text>
+
+                          {step.imageUri && (
+                            <Image
+                              source={{ uri: step.imageUri }}
+                              style={styles.stepVerticalImage}
+                            />
+                          )}
+
+                          {step.textImageUri && (
+                            <Image
+                              source={{ uri: step.textImageUri }}
+                              style={styles.stepVerticalImage}
+                            />
+                          )}
+                        </View>
+                      );
+                    })}
+                  </>
+                ) : (
+                  <View style={styles.emptyPlaceholder}>
+                    <Ionicons name="list-outline" size={40} color="#bbb" />
+                    <Text style={styles.emptyPlaceholderText}>
+                      Nessun procedimento disponibile
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            <SuccessToast
+              visible={toastVisible}
+              message="Ingredienti aggiunti alla spesa"
             />
 
-            <TouchableOpacity
-              onPress={() => setFullImage(null)}
-              style={styles.closeButton}
-            >
-              <Ionicons name="close" size={32} color="white" />
-            </TouchableOpacity>
-          </Modal>
-        </View>
+            {/* MODALE IMMAGINE FULLSCREEN */}
+            <Modal visible={!!fullImage} transparent={true}>
+              <ImageViewer
+                imageUrls={[{ url: fullImage! }]}
+                enableSwipeDown
+                onSwipeDown={() => setFullImage(null)}
+                onCancel={() => setFullImage(null)}
+                renderIndicator={() => <View />}
+                backgroundColor="rgba(0,0,0,0.95)"
+                saveToLocalByLongPress={false}
+              />
+
+              <TouchableOpacity
+                onPress={() => setFullImage(null)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={32} color="white" />
+              </TouchableOpacity>
+            </Modal>
+          </View>
+        </Animated.View>
       </ScrollView>
 
       {/* ⭐ TIMER BUTTON FISSO IN BASSO A SINISTRA */}
@@ -601,7 +860,7 @@ export default function RecipeDetailScreen() {
         style={styles.floatingTimer}
         onPress={() => router.push("/timer")}
       >
-        <Ionicons name="time-outline" size={26} color="white" />
+        <Ionicons name="time-outline" size={26} color={COLORS.textLight} />
       </TouchableOpacity>
 
       {/* ⭐ MENU ELLIPSIS FISSO IN BASSO A DESTRA */}
@@ -609,7 +868,7 @@ export default function RecipeDetailScreen() {
         style={styles.floatingMenu}
         onPress={() => setMenuVisible(true)}
       >
-        <Ionicons name="ellipsis-vertical" size={26} color="white" />
+        <Ionicons name="ellipsis-vertical" size={26} color={COLORS.textLight} />
       </TouchableOpacity>
 
       {/* ⭐ MENU MODALE */}
@@ -674,16 +933,7 @@ export default function RecipeDetailScreen() {
             style={styles.menuItem}
             onPress={() => {
               setMenuVisible(false);
-              addToShoppingList(
-                recipe.ingredients.flatMap((group) =>
-                  group.items.map((ing) => ({
-                    ...ing,
-                    checked: false,
-                    linkedRecipeId: ing.linkedRecipeId ?? undefined,
-                  })),
-                ),
-              );
-              showAddedToast();
+              setModalVisible(true);
             }}
           >
             <Ionicons name="cart-outline" size={20} color="#333" />
@@ -691,6 +941,30 @@ export default function RecipeDetailScreen() {
           </TouchableOpacity>
         </View>
       </Modal>
+
+      <IngredientsModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        ingredients={recipe.ingredients.flatMap((group) =>
+          group.items.map((ing) => ({
+            name: ing.name,
+            quantity: String(ing.quantity ?? ""),
+            unit: ing.unit ?? "",
+            checked: true,
+          })),
+        )}
+        onConfirm={(selected) => {
+          addToShoppingList(
+            selected.map((i) => ({
+              name: i.name,
+              quantity: String(i.quantity ?? ""),
+              unit: i.unit ?? "",
+              checked: false,
+            })),
+          );
+          showAddedToast();
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -699,6 +973,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#ffffff",
+    paddingBottom: 35,
   },
 
   /* HERO IMAGE */
@@ -1010,37 +1285,25 @@ const styles = StyleSheet.create({
   /* ⭐ FLOATING BUTTONS */
   floatingTimer: {
     position: "absolute",
-    bottom: 60,
+    bottom: 40,
     left: 20,
-    backgroundColor: COLORS.primary,
     width: 40,
     height: 40,
     borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 8,
     zIndex: 999,
   },
 
   floatingMenu: {
     position: "absolute",
-    bottom: 60,
+    bottom: 40,
     right: 20,
-    backgroundColor: COLORS.secondary,
     width: 40,
     height: 40,
     borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 8,
     zIndex: 999,
   },
 
@@ -1057,6 +1320,7 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: "#fff",
     paddingVertical: 20,
+    paddingBottom: 50,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     shadowColor: "#000",
@@ -1077,5 +1341,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginLeft: 12,
     color: "#333",
+  },
+
+  emptyPlaceholder: {
+    paddingVertical: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    opacity: 0.7,
+  },
+
+  emptyPlaceholderText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#999",
+    textAlign: "center",
   },
 });

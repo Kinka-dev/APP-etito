@@ -16,13 +16,16 @@ export const DynamicImage: React.FC<Props> = ({
   onOpenFull,
   style,
 }) => {
+  // ⭐ L’hook va SEMPRE chiamato
   const imgStyle = useDynamicImageSize(uri ?? null);
 
-  if (!uri) return null;
+  // ⭐ Se non c’è immagine, ritorna un contenitore vuoto (NON null)
+  if (!uri) {
+    return <View style={{ width: "100%", marginBottom: 20 }} />;
+  }
 
   return (
     <View style={{ width: "100%", marginBottom: 20 }}>
-      {/* Pulsante elimina (opzionale) */}
       {onDelete && (
         <TouchableOpacity
           onPress={onDelete}
@@ -44,7 +47,6 @@ export const DynamicImage: React.FC<Props> = ({
         </TouchableOpacity>
       )}
 
-      {/* Contenitore immagine */}
       <View
         style={{
           width: "100%",
@@ -54,10 +56,7 @@ export const DynamicImage: React.FC<Props> = ({
           borderRadius: 12,
         }}
       >
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={onOpenFull} // ⭐ ora funziona
-        >
+        <TouchableOpacity activeOpacity={0.9} onPress={onOpenFull}>
           <Image
             source={{ uri }}
             style={[imgStyle, { width: "100%", alignSelf: "center" }, style]}

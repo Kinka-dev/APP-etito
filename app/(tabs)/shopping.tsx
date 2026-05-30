@@ -321,7 +321,7 @@ export default function ShoppingScreen() {
 
   return (
     <ImageBackground
-      source={require("../../assets/images/sfondo.png")}
+      source={require("../../assets/images/sfondo7.png")}
       style={styles.bg}
       resizeMode="cover"
     >

@@ -812,24 +812,6 @@ export const carni_salumi = {
     fat: 33.0,
   },
 
-  "prosciutto cotto": {
-    kcal: 145,
-    carbs: 1.0,
-    protein: 20.0,
-    fat: 6.0,
-  },
-  "prosciutto crudo": {
-    kcal: 250,
-    carbs: 0.0,
-    protein: 28.0,
-    fat: 14.0,
-  },
-  speck: {
-    kcal: 300,
-    carbs: 0.0,
-    protein: 30.0,
-    fat: 20.0,
-  },
   bresaola: {
     kcal: 151,
     carbs: 2.0,
@@ -862,12 +844,7 @@ export const carni_salumi = {
     protein: 16.0,
     fat: 27.0,
   },
-  pancetta: {
-    kcal: 458,
-    carbs: 0.0,
-    protein: 13.0,
-    fat: 45.0,
-  },
+
   guanciale: {
     kcal: 655,
     carbs: 0.0,
@@ -931,6 +908,16 @@ export const carni_salumi = {
     protein: 17.0,
     fat: 4.8,
   },
+  "prosciutto cotto": { kcal: 145, carbs: 1.2, protein: 19.0, fat: 6.0 },
+  "prosciutto crudo": { kcal: 269, carbs: 0.3, protein: 26.0, fat: 18.0 },
+  pancetta: { kcal: 458, carbs: 1.0, protein: 13.7, fat: 45.0 },
+  speck: { kcal: 301, carbs: 0.5, protein: 30.0, fat: 20.0 },
+  "carne macinata mista": { kcal: 215, carbs: 0, protein: 18, fat: 15 },
+  "carne macinata bovino": { kcal: 250, carbs: 0, protein: 26, fat: 17 },
+  "carne macinata suino": { kcal: 263, carbs: 0, protein: 17, fat: 21 },
+  "petto di tacchino": { kcal: 107, carbs: 0, protein: 24, fat: 1.2 },
+  "tonno in scatola sgocciolato": { kcal: 116, carbs: 0, protein: 26, fat: 1 },
+  "salmone fresco": { kcal: 208, carbs: 0, protein: 20, fat: 13 },
 };
 
 export const pesce_frutti_di_mare = {
@@ -1211,6 +1198,9 @@ export const latticini_formaggi = {
     protein: 10.0,
     fat: 8.0,
   },
+
+  "yogurt bianco intero": { kcal: 61, carbs: 4.7, protein: 3.5, fat: 3.3 },
+  "yogurt greco 2%": { kcal: 73, carbs: 3.9, protein: 9.0, fat: 2.0 },
 
   "panna fresca": {
     kcal: 340,
@@ -2006,13 +1996,6 @@ export const dolci_creme = {
     protein: 8.0,
     fat: 38.0,
   },
-
-  "crema pasticcera": {
-    kcal: 215,
-    carbs: 30.0,
-    protein: 4.0,
-    fat: 8.0,
-  },
   "crema chantilly": {
     kcal: 280,
     carbs: 20.0,
@@ -2471,6 +2454,8 @@ export const salse_italiane = {
     protein: 3.0,
     fat: 20.0,
   },
+  "polpa di pomodoro": { kcal: 30, carbs: 5.5, protein: 1.2, fat: 0.3 },
+  "concentrato di pomodoro": { kcal: 82, carbs: 19, protein: 4.3, fat: 0.5 },
 };
 
 export const salse_asiatiche = {
@@ -2673,18 +2658,6 @@ export const salse_dolci = {
     fat: 0.2,
   },
 
-  "sciroppo d'acero": {
-    kcal: 260,
-    carbs: 67.0,
-    protein: 0.0,
-    fat: 0.0,
-  },
-  "sciroppo d'agave": {
-    kcal: 310,
-    carbs: 76.0,
-    protein: 0.0,
-    fat: 0.0,
-  },
   "sciroppo di datteri": {
     kcal: 310,
     carbs: 75.0,
@@ -2703,18 +2676,6 @@ export const salse_dolci = {
     carbs: 30.0,
     protein: 4.0,
     fat: 8.0,
-  },
-  "crema chantilly": {
-    kcal: 280,
-    carbs: 20.0,
-    protein: 2.0,
-    fat: 22.0,
-  },
-  "crema al mascarpone": {
-    kcal: 430,
-    carbs: 12.0,
-    protein: 4.0,
-    fat: 40.0,
   },
   "crema al pistacchio": {
     kcal: 580,
@@ -3330,14 +3291,6 @@ export const extra_completo = {
     protein: 0.0,
     fat: 0.0,
   },
-
-  // DOLCIFICANTI SPECIALI
-  stevia: {
-    kcal: 0,
-    carbs: 0.0,
-    protein: 0.0,
-    fat: 0.0,
-  },
 };
 
 export const extra_veg_fitness = {
@@ -3912,6 +3865,14 @@ export const frutta_secca_semi = {
   },
 };
 
+export const base_essentials = {
+  "uovo intero": { kcal: 128, carbs: 0.7, protein: 12.4, fat: 8.7 },
+  albume: { kcal: 43, carbs: 0.7, protein: 10.5, fat: 0.2 },
+  tuorlo: { kcal: 322, carbs: 3.6, protein: 15.9, fat: 27.5 },
+
+  // Carne e pesce
+};
+
 export const nutritionDB = {
   pasta_riso_farine,
   carni_salumi,
@@ -3931,6 +3892,7 @@ export const nutritionDB = {
   salse_da_insalata,
   salse_dolci,
   salse_fast_food,
+  base_essentials,
 };
 
 export type FoodItem = {

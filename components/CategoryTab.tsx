@@ -1,4 +1,4 @@
-// CategoryTab.tsx
+import { COLORS } from "@/constants/colors";
 import React, { forwardRef } from "react";
 import {
   Image,
@@ -29,33 +29,33 @@ const CategoryTab = forwardRef<View, Props>(
     const animatedStyle = useAnimatedStyle(() => ({
       transform: [
         {
-          scale: withSpring(selected ? 1.05 : 1, {
-            damping: 6,
-            stiffness: 30,
+          scale: withSpring(selected ? 1.02 : 1, {
+            damping: 10,
+            stiffness: 120,
           }),
         },
       ],
+      backgroundColor: selected ? "#f7f7f7" : "white",
+      borderWidth: selected ? 2 : 1,
+      borderColor: selected ? COLORS.primary : "rgba(0,0,0,0.08)",
+      shadowOpacity: selected ? 0.15 : 0.05,
+      shadowRadius: selected ? 8 : 4,
+      elevation: selected ? 4 : 1,
     }));
 
     return (
       <AnimatedView
         ref={ref}
-        style={[
-          styles.wrapper,
-          animatedStyle,
-          // ⭐ glow quando selezionata
-        ]}
+        style={[styles.card, animatedStyle]}
         onLayout={onLayout}
       >
         <Pressable onPress={onPress} style={styles.row}>
-          {/* Testo a sinistra */}
           <View style={styles.textContainer}>
             <Text bold style={[styles.label, labelStyle]}>
               {label}
             </Text>
           </View>
 
-          {/* Immagine a destra */}
           {icon && (
             <Image source={icon} style={styles.icon} resizeMode="cover" />
           )}
@@ -68,47 +68,41 @@ const CategoryTab = forwardRef<View, Props>(
 export default CategoryTab;
 
 const styles = StyleSheet.create({
-  wrapper: {
-    width: 360, // ⭐ larghezza fissa
-    height: 170, // ⭐ altezza fissa per allineamento perfetto
+  card: {
+    height: 160,
+    width: 130,
+    marginHorizontal: 4,
+    marginVertical: 3,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    flexDirection: "column",
+    borderRadius: 18,
+    paddingVertical: 0,
+    backgroundColor: "white",
+    shadowColor: "#000",
   },
 
   row: {
-    flexDirection: "row", // ⭐ testo sinistra, immagine destra
-    width: "100%",
-    height: "100%",
+    flexDirection: "column-reverse",
     alignItems: "center",
-    justifyContent: "flex-start",
-    paddingHorizontal: 16,
+    padding: 5,
   },
 
-  textContainer: {
-    minWidth: 100,
-    maxWidth: 180,
-    marginRight: -30,
-    marginLeft: 30,
-    textAlign: "center",
-  },
+  textContainer: {},
 
   label: {
-    fontSize: 16,
-    color: "black",
+    fontSize: 11,
+    color: COLORS.text,
     flexWrap: "wrap",
-    paddingVertical: 15,
-    paddingHorizontal: 25,
-    backgroundColor: "white",
-    borderRadius: 30,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.05)",
+    width: 70,
+    lineHeight: 15,
     textAlign: "center",
+    marginTop: 0,
   },
 
   icon: {
-    width: 170, // ⭐ immagine a destra
-    height: "100%",
+    width: 110,
+    height: 110,
+    borderRadius: 14,
   },
 });

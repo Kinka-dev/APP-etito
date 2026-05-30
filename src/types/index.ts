@@ -11,7 +11,7 @@ export interface Ingredient {
 export type IngredientItem = {
   id: string;
   name: string;
-  quantity: string;
+  quantity: number | "";
   unit: string;
   linkedRecipeId?: string | null;
   kcal?: number;

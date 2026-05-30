@@ -9,7 +9,13 @@ import { useIngredientSearch } from "@/hooks/useIngredientSearch";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import {
+  ImageBackground,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { calculateMacros } from "../data/nutritionDB";
 
 export default function CalorieCalculatorScreen() {
@@ -84,111 +90,119 @@ export default function CalorieCalculatorScreen() {
     setQuery("");
   };
 
+  const hasPie = totalCarbs + totalProtein + totalFat > 0;
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={{ paddingBottom: 40 }}
+    <ImageBackground
+      source={require("../../assets/images/sfondo9.png")}
+      style={styles.bg}
+      resizeMode="cover"
     >
-      <Text bold style={styles.title}>
-        Calcolatore Calorie & Macro
-      </Text>
-
-      <Text style={styles.subtitle}>
-        Inserisci ingredienti e quantità per calcolare calorie e macro totali.
-      </Text>
-
-      {/* ⭐ Sezione aggiungi ingrediente */}
-      <View style={styles.addBox}>
-        {/* RIGA 1 */}
-        <View style={styles.rowTop}>
-          <View style={styles.nameWrapper}>
-            <Input
-              placeholder="Ingrediente"
-              value={newIngName}
-              onChangeText={(text) => {
-                setNewIngName(text);
-                setQuery(text);
-              }}
-              style={styles.input}
-            />
-
-            {query.length > 0 && results.length > 0 && (
-              <View style={styles.suggestionBox}>
-                {results.map((item) => (
-                  <TouchableOpacity
-                    key={item}
-                    onPress={() => {
-                      setNewIngName(item);
-                      onSelect(item);
-                      setQuery("");
-                    }}
-                    style={styles.suggestionItem}
-                  >
-                    <Text>{item}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </View>
-
-          <TouchableOpacity style={styles.addBtn} onPress={addIngredient}>
-            <Ionicons name="add" size={22} color="white" />
-          </TouchableOpacity>
-        </View>
-
-        {/* RIGA 2 */}
-        <View style={styles.rowBottom}>
-          <Input
-            placeholder="Quantità"
-            value={newIngQty}
-            onChangeText={setNewIngQty}
-            keyboardType="numeric"
-            style={styles.qtyInput}
-          />
-
-          <Input
-            placeholder="g"
-            value={newIngUnit}
-            onChangeText={setNewIngUnit}
-            style={styles.unitInput}
-          />
-        </View>
-      </View>
-
-      {/* ⭐ Lista ingredienti */}
-      {ingredients.map((ing) => (
-        <IngredientMacro
-          key={ing.id}
-          ing={ing}
-          onDelete={() =>
-            setIngredients((prev) => prev.filter((i) => i.id !== ing.id))
-          }
-        />
-      ))}
-
-      {/* ⭐ Totali */}
-      <View style={styles.summaryBox}>
-        <Text bold style={styles.summaryText}>
-          Calorie totali: {totalKcalAnim} kcal
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
+        <Text bold style={styles.title}>
+          Calcolatore Calorie & Macro
         </Text>
 
-        <View style={{ marginVertical: 20 }}>
-          <PieChart
-            carbs={totalCarbs}
-            protein={totalProtein}
-            fat={totalFat}
-            size={130}
-          />
+        <Text style={styles.subtitle}>
+          Inserisci ingredienti e quantità per calcolare calorie e macro totali.
+        </Text>
+
+        {/* ⭐ Sezione aggiungi ingrediente */}
+        <View style={styles.addBox}>
+          {/* RIGA 1 */}
+          <View style={styles.rowTop}>
+            <View style={styles.nameWrapper}>
+              <Input
+                placeholder="Ingrediente"
+                value={newIngName}
+                onChangeText={(text) => {
+                  setNewIngName(text);
+                  setQuery(text);
+                }}
+                style={styles.input}
+              />
+
+              {query.length > 0 && results.length > 0 && (
+                <View style={styles.suggestionBox}>
+                  {results.map((item) => (
+                    <TouchableOpacity
+                      key={item}
+                      onPress={() => {
+                        setNewIngName(item);
+                        onSelect(item);
+                        setQuery("");
+                      }}
+                      style={styles.suggestionItem}
+                    >
+                      <Text>{item}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <TouchableOpacity style={styles.addBtn} onPress={addIngredient}>
+              <Ionicons name="add" size={22} color="white" />
+            </TouchableOpacity>
+          </View>
+
+          {/* RIGA 2 */}
+          <View style={styles.rowBottom}>
+            <Input
+              placeholder="Quantità"
+              value={newIngQty}
+              onChangeText={setNewIngQty}
+              keyboardType="numeric"
+              style={styles.qtyInput}
+            />
+
+            <Input
+              placeholder="g"
+              value={newIngUnit}
+              onChangeText={setNewIngUnit}
+              style={styles.unitInput}
+            />
+          </View>
         </View>
-      </View>
-    </ScrollView>
+
+        {/* ⭐ Lista ingredienti */}
+        {ingredients.map((ing) => (
+          <IngredientMacro
+            key={ing.id}
+            ing={ing}
+            onDelete={() =>
+              setIngredients((prev) => prev.filter((i) => i.id !== ing.id))
+            }
+          />
+        ))}
+
+        {/* ⭐ Totali */}
+        <View style={styles.summaryBox}>
+          <Text bold style={styles.summaryText}>
+            Calorie totali: {totalKcalAnim} kcal
+          </Text>
+
+          <View style={{ marginVertical: 20 }}>
+            <PieChart
+              carbs={totalCarbs}
+              protein={totalProtein}
+              fat={totalFat}
+              size={130}
+            />
+          </View>
+        </View>
+      </ScrollView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     padding: 40,
-    backgroundColor: "white",
+    paddingBottom: 20,
   },
 
   title: {
@@ -243,7 +257,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
     padding: 16,
     backgroundColor: "#ffffff",
-    borderRadius: 12,
+    borderRadius: 20,
   },
 
   summaryText: {
@@ -350,5 +364,11 @@ const styles = StyleSheet.create({
 
   unitInput: {
     flex: 1,
+  },
+
+  bg: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
   },
 });

@@ -34,7 +34,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   bevande: "Bevande",
   basi: "Basi",
   conserve: "Conserve",
-  altro: "Altro ...",
+  altro: "Altro",
 };
 
 export const CATEGORY_IMAGES: Record<Category, any> = {

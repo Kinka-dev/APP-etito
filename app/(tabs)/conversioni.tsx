@@ -20,43 +20,43 @@ export default function ConversioniScreen() {
       key: "imperial",
       label: "Imperiale ↔ Metrico",
       desc: "Converti cup, tbsp, oz in ml e g",
-      icon: require("../../assets/images/cups.png"),
+      icon: require("../../assets/images/cups.jpg"),
     },
     {
       key: "volume",
       label: "Volume ↔ Peso",
       desc: "Trasforma ml in grammi in base all’ingrediente",
-      icon: require("../../assets/images/volume.png"),
+      icon: require("../../assets/images/capacita.jpg"),
     },
     {
       key: "temperature",
       label: "Temperatura forno",
       desc: "Celsius, Fahrenheit, statico e ventilato",
-      icon: require("../../assets/images/oven.png"),
+      icon: require("../../assets/images/temperatura.jpg"),
     },
     {
       key: "yeast",
       label: "Lievito fresco ↔ secco",
       desc: "Calcolo automatico 1:3",
-      icon: require("../../assets/images/yeast.png"),
+      icon: require("../../assets/images/lievito.jpg"),
     },
     {
       key: "flour",
       label: "Forza farina (W)",
       desc: "Miscela farine per ottenere il W desiderato",
-      icon: require("../../assets/images/flour.png"),
+      icon: require("../../assets/images/farine.jpg"),
     },
     {
       key: "subs",
       label: "Sostituzioni ingredienti",
       desc: "Alternative affidabili per ogni ingrediente",
-      icon: require("../../assets/images/subs.png"),
+      icon: require("../../assets/images/sostituzioni.jpg"),
     },
   ];
 
   return (
     <ImageBackground
-      source={require("../../assets/images/sfondo.png")}
+      source={require("../../assets/images/sfondo8.png")}
       style={styles.bg}
       resizeMode="cover"
     >
@@ -90,7 +90,7 @@ export default function ConversioniScreen() {
               >
                 <Image
                   source={c.icon}
-                  style={{ width: 50, height: 50, marginTop: 20 }}
+                  style={{ width: "100%", height: 140 }}
                   resizeMode="cover"
                 />
 
@@ -422,14 +422,14 @@ function VolumeWeightCard() {
     acqua: 1.0,
     latte: 1.03,
     olio: 0.92,
-    farina00: 0.53,
-    farinaManitoba: 0.55,
+    "farina 00": 0.53,
+    "farina Manitoba": 0.55,
     zucchero: 0.85,
-    zuccheroAvelo: 0.6,
+    "zucchero a velo": 0.6,
     miele: 1.42,
-    burroFuso: 0.91,
+    "burro fuso": 0.91,
     panna: 1.01,
-    uovaSbattute: 1.03,
+    "uova sbattute": 1.03,
   };
 
   type IngredientKey = keyof typeof density;
@@ -1314,7 +1314,7 @@ function IngredientSubstitutionCard() {
 const styles = StyleSheet.create({
   container: {
     paddingTop: 90,
-    // backgroundColor: "#fffaf0",
+    backgroundColor: "white",
   },
   header: {
     // paddingVertical: 20,
@@ -1324,7 +1324,7 @@ const styles = StyleSheet.create({
     fontSize: 30,
     padding: 15,
     textAlign: "center",
-    marginBottom: 50,
+    marginBottom: 20,
     color: "black",
   },
   icon: {

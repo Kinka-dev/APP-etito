@@ -1,6 +1,6 @@
 import Text from "@/components/Text";
 import React, { useEffect, useState } from "react";
-import { Easing, View } from "react-native";
+import { Animated, Easing, View } from "react-native";
 import Svg, { G, Path } from "react-native-svg";
 
 type Props = {
@@ -42,14 +42,23 @@ export default function PieChartMini({
   const [p2, setP2] = useState(0);
   const [p3, setP3] = useState(0);
 
+  const hasPie = carbs + protein + fat > 0;
+
   // percentuali visualizzate
   const [carbsView, setCarbsView] = useState(0);
   const [proteinView, setProteinView] = useState(0);
   const [fatView, setFatView] = useState(0);
 
+  const slideAnim = useState(new Animated.Value(-40))[0];
+
   // animazione archi “a raggio”
   useEffect(() => {
     let mounted = true;
+
+    // reset animazioni
+    setP1(0);
+    setP2(0);
+    setP3(0);
 
     const animate = (
       setter: React.Dispatch<React.SetStateAction<number>>,
@@ -81,7 +90,7 @@ export default function PieChartMini({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [carbs, protein, fat]);
 
   // animazione count‑up percentuali
   useEffect(() => {
@@ -112,41 +121,50 @@ export default function PieChartMini({
     };
   }, [carbsPct, proteinPct, fatPct]);
 
+  useEffect(() => {
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 350,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [carbs, protein, fat]);
+
   return (
     <View
       style={{
-        flexDirection: "row",
+        flexDirection: hasPie ? "row" : "column", // ⭐ legenda centrata quando non c’è la torta
         alignItems: "center",
-        gap: 20,
+        justifyContent: hasPie ? "flex-start" : "center",
+        gap: hasPie ? 20 : 10,
         backgroundColor: "white",
       }}
     >
-      {/* Pie chart piccolo */}
-      <Svg width={size} height={size}>
-        <G>
-          {/* Carboidrati */}
-          <Path d={arcPath(0, carbsAngle * p1, r)} fill="#00a56e" />
+      {/* Pie chart solo se ci sono valori */}
+      {hasPie && (
+        <Animated.View style={{ transform: [{ translateX: slideAnim }] }}>
+          <Svg width={size} height={size}>
+            <G>
+              <Path d={arcPath(0, carbsAngle * p1, r)} fill="#00a56e" />
+              <Path
+                d={arcPath(carbsAngle, carbsAngle + proteinAngle * p2, r)}
+                fill="#b292ad"
+              />
+              <Path
+                d={arcPath(
+                  carbsAngle + proteinAngle,
+                  carbsAngle + proteinAngle + fatAngle * p3,
+                  r,
+                )}
+                fill="#ffc800"
+              />
+            </G>
+          </Svg>
+        </Animated.View>
+      )}
 
-          {/* Proteine */}
-          <Path
-            d={arcPath(carbsAngle, carbsAngle + proteinAngle * p2, r)}
-            fill="#b292ad"
-          />
-
-          {/* Grassi */}
-          <Path
-            d={arcPath(
-              carbsAngle + proteinAngle,
-              carbsAngle + proteinAngle + fatAngle * p3,
-              r,
-            )}
-            fill="#ffc800"
-          />
-        </G>
-      </Svg>
-
-      {/* Macro + percentuali animate */}
-      <View style={{ gap: 6 }}>
+      {/* Legenda */}
+      <View style={{ gap: 6, alignItems: hasPie ? "flex-start" : "center" }}>
         <Text style={{ fontSize: 11 }}>
           <Text bold style={{ color: "#00a56e" }}>
             {carbsView}%

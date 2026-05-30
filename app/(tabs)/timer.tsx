@@ -1,11 +1,9 @@
 // app/(tabs)/timer.tsx
-
 import Input from "@/components/Input";
 import Text from "@/components/Text";
 import { COLORS } from "@/constants/colors";
 import { useTimers } from "@/context/TimerContext";
 import { Ionicons } from "@expo/vector-icons";
-import * as KeepAwake from "expo-keep-awake";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -21,137 +19,132 @@ import Svg, { Path } from "react-native-svg";
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
+function formatTime(s: number) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+}
+
+function parseQuickInput(v: string) {
+  const [m, s] = v.split(":").map((x) => parseInt(x) || 0);
+  return m * 60 + s;
+}
+
 export default function TimerScreen() {
-  const { timers, addTimer, startTimer, pauseTimer, resetTimer, deleteTimer } =
-    useTimers();
+  const {
+    timers,
+    setTimers,
+    addTimer,
+    startTimer,
+    pauseTimer,
+    resetTimer,
+    resumeTimer,
+    deleteTimer,
+  } = useTimers();
 
-  // ==================== QUICK TIMER ====================
-  const [quickTimeLeft, setQuickTimeLeft] = useState(300);
-  const [initialQuickTime, setInitialQuickTime] = useState(300);
-  const [isQuickRunning, setIsQuickRunning] = useState(false);
-  const quickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const quick = timers.find((t) => t.id === "quick");
 
-  // ==================== EDIT DIRETTO ====================
+  // Crea il quick timer se non esiste ancora
+  useEffect(() => {
+    if (!quick) {
+      setTimers((prev) => [
+        ...prev,
+        {
+          id: "quick",
+          title: "Quick",
+          duration: 300,
+          remainingSeconds: 300,
+          isRunning: false,
+          isPaused: false,
+          endTime: null,
+          notificationId: null,
+          hasNotified: false,
+        },
+      ]);
+    }
+  }, [quick, setTimers]);
+
+  // ==================== EDIT DIRETTO QUICK ====================
   const [isEditingQuick, setIsEditingQuick] = useState(false);
-  const [quickInput, setQuickInput] = useState("05:00");
+  const [quickInput, setQuickInput] = useState(
+    formatTime(quick?.remainingSeconds ?? 300),
+  );
+
+  // Mantieni l'input sincronizzato con il valore reale del quick timer
+  useEffect(() => {
+    if (!isEditingQuick && quick) {
+      setQuickInput(formatTime(quick.remainingSeconds));
+    }
+  }, [quick?.remainingSeconds]);
 
   // ==================== ANIMAZIONE SPICCHI ====================
   const slices = 24;
   const sliceAnim = useRef(new Animated.Value(0)).current;
 
+  // ==================== ANIMAZIONE TORTA SINCRONIZZATA ====================
+  useEffect(() => {
+    if (!quick) return;
+
+    // Se il timer è in pausa → fermiamo l'animazione
+    if (quick.isPaused) {
+      sliceAnim.stopAnimation();
+      return;
+    }
+
+    // Se il timer è fermo → resettiamo animazione
+    if (!quick.isRunning) {
+      sliceAnim.stopAnimation();
+      sliceAnim.setValue(0);
+      return;
+    }
+
+    // Timer in esecuzione → animazione sincronizzata
+    let progress = 0;
+
+    // Legge il valore attuale dell'animazione
+    sliceAnim.stopAnimation((v) => (progress = v));
+
+    const remaining = quick.remainingSeconds * (1 - progress);
+
+    Animated.timing(sliceAnim, {
+      toValue: 1,
+      duration: remaining * 1000,
+      easing: Easing.linear,
+      useNativeDriver: false,
+    }).start();
+  }, [quick?.isRunning, quick?.isPaused, quick?.remainingSeconds]);
+
   // ==================== COUNTDOWN ANIM ====================
   const countdownScale = useRef(new Animated.Value(1)).current;
 
-  useEffect(() => {
-    if (quickTimeLeft <= 10 && quickTimeLeft > 0) {
-      Animated.sequence([
-        Animated.timing(countdownScale, {
-          toValue: 1.25,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(countdownScale, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [quickTimeLeft]);
-
-  // ==================== KEEP AWAKE ====================
-  useEffect(() => {
-    const active = isQuickRunning || timers.some((t) => t.isRunning);
-    active
-      ? KeepAwake.activateKeepAwakeAsync("timers")
-      : KeepAwake.deactivateKeepAwake("timers");
-  }, [isQuickRunning, timers]);
-
-  // ==================== COUNTDOWN ====================
-  useEffect(() => {
-    if (isQuickRunning && quickTimeLeft > 0) {
-      quickTimerRef.current = setInterval(() => {
-        setQuickTimeLeft((prev) => {
-          if (prev <= 1) {
-            clearInterval(quickTimerRef.current!);
-            setIsQuickRunning(false);
-            sliceAnim.setValue(1);
-            return 0;
-          }
-
-          return prev - 1;
-        });
-      }, 1000);
-    }
-
-    return () => clearInterval(quickTimerRef.current!);
-  }, [isQuickRunning]);
-
-  // ==================== START / STOP ====================
-  const toggleQuickTimer = () => {
-    if (!isQuickRunning) {
-      // ⭐ Se stai avviando il timer
-      sliceAnim.stopAnimation((currentValue) => {
-        const remainingSeconds = quickTimeLeft * (1 - currentValue);
-
-        Animated.timing(sliceAnim, {
-          toValue: 1,
-          duration: remainingSeconds * 1000,
-          easing: Easing.linear,
-          useNativeDriver: false,
-        }).start();
-      });
-    } else {
-      // ⭐ Se stai mettendo in pausa
-      sliceAnim.stopAnimation();
-    }
-
-    setIsQuickRunning(!isQuickRunning);
-  };
-
-  const resetQuickTimer = () => {
-    clearInterval(quickTimerRef.current!);
-    setIsQuickRunning(false);
-    setQuickTimeLeft(300);
-    setInitialQuickTime(300);
-    sliceAnim.setValue(0);
-    setQuickInput("05:00");
-  };
-
-  // ==================== EDIT DIRETTO ====================
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m.toString().padStart(2, "0")}:${sec
-      .toString()
-      .padStart(2, "0")}`;
-  };
-
-  useEffect(() => {
-    setQuickInput(formatTime(quickTimeLeft));
-  }, [quickTimeLeft]);
-
-  const parseQuickInput = (v: string) => {
-    const [m, s] = v.split(":").map((x) => parseInt(x) || 0);
-    return m * 60 + s;
-  };
-
+  // ==================== CONFERMA INPUT QUICK ====================
   const confirmQuickInput = () => {
     const total = parseQuickInput(quickInput);
     if (total <= 0) {
-      setQuickInput(formatTime(quickTimeLeft));
+      setQuickInput(formatTime(quick?.remainingSeconds ?? 0));
       setIsEditingQuick(false);
       return;
     }
 
-    clearInterval(quickTimerRef.current!);
-    setIsQuickRunning(false);
-    sliceAnim.setValue(0);
-
-    setQuickTimeLeft(total);
-    setInitialQuickTime(total);
+    setTimers((prev) =>
+      prev.map((t) =>
+        t.id === "quick"
+          ? {
+              ...t,
+              duration: total,
+              remainingSeconds: total,
+              isRunning: false,
+              isPaused: false,
+              endTime: null,
+              notificationId: null,
+              hasNotified: false,
+            }
+          : t,
+      ),
+    );
 
     setIsEditingQuick(false);
+    sliceAnim.setValue(0);
   };
 
   // ==================== FORM NUOVO TIMER ====================
@@ -205,24 +198,15 @@ export default function TimerScreen() {
     `;
   };
 
-  // ==================== RENDER ====================
-  const timerColor =
-    quickTimeLeft <= 10 && quickTimeLeft > 0 ? "#e74c3c" : COLORS.text;
-
   return (
     <ImageBackground
-      source={require("../../assets/images/sfondo.png")}
+      source={require("../../assets/images/sfondo3.png")}
       style={styles.bg}
       resizeMode="cover"
     >
       <SafeAreaView style={styles.container}>
         <ScrollView>
           <View style={styles.header}>
-            {/* <Image
-              source={require("../../assets/images/timer.png")}
-              style={styles.icon}
-              resizeMode="contain"
-            /> */}
             <Text bold style={styles.title}>
               Timer
             </Text>
@@ -237,22 +221,17 @@ export default function TimerScreen() {
               <Svg width={1024} height={1024} style={styles.svgOverlay}>
                 {[...Array(slices)].map((_, i) => {
                   const opacity = sliceAnim.interpolate({
-                    inputRange: [i / slices, (i + 1) / slices],
-                    outputRange: [0, 1],
+                    inputRange: [0, i / slices, (i + 1) / slices, 1],
+                    outputRange: [0, 0, 1, 1],
                     extrapolate: "clamp",
-                  });
-
-                  const stepOpacity = opacity.interpolate({
-                    inputRange: [0, 0.999, 1],
-                    outputRange: [0, 0, 1],
                   });
 
                   return (
                     <AnimatedPath
                       key={i}
                       d={generateSlicePath(i)}
-                      fill="#fffaf0"
-                      opacity={stepOpacity}
+                      fill="#ffffff"
+                      opacity={opacity}
                     />
                   );
                 })}
@@ -267,7 +246,7 @@ export default function TimerScreen() {
                 >
                   {isEditingQuick ? (
                     <Input
-                      style={[styles.timerTextInput, { color: timerColor }]}
+                      style={[styles.timerTextInput]}
                       value={quickInput}
                       onChangeText={setQuickInput}
                       keyboardType="numeric"
@@ -278,11 +257,8 @@ export default function TimerScreen() {
                     />
                   ) : (
                     <TouchableOpacity onPress={() => setIsEditingQuick(true)}>
-                      <Text
-                        bold
-                        style={[styles.timerText, { color: timerColor }]}
-                      >
-                        {formatTime(quickTimeLeft)}
+                      <Text bold style={[styles.timerText]}>
+                        {formatTime(quick?.remainingSeconds ?? 0)}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -291,26 +267,45 @@ export default function TimerScreen() {
             </View>
           </View>
 
-          {/* CONTROLLI */}
+          {/* CONTROLLI QUICK */}
           <View style={styles.quickControls}>
             <TouchableOpacity
               style={styles.quickBtn}
-              onPress={toggleQuickTimer}
+              onPress={() => {
+                if (!quick?.isRunning) {
+                  startTimer("quick");
+                } else if (quick?.isPaused) {
+                  resumeTimer("quick");
+                } else {
+                  pauseTimer("quick");
+                }
+              }}
             >
               <Ionicons
-                name={isQuickRunning ? "pause" : "play"}
+                name={
+                  !quick?.isRunning
+                    ? "play"
+                    : quick?.isPaused
+                      ? "play"
+                      : "pause"
+                }
                 size={36}
                 color="white"
               />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.quickBtn} onPress={resetQuickTimer}>
+            <TouchableOpacity
+              style={styles.quickBtn}
+              onPress={() => {
+                resetTimer("quick");
+                sliceAnim.setValue(0);
+              }}
+            >
               <Ionicons name="refresh" size={36} color="white" />
             </TouchableOpacity>
           </View>
 
           {/* ==================== NUOVO TIMER ==================== */}
-
           <View style={styles.formCard}>
             <Text variant="title" style={styles.sectionTitle}>
               Nuovo Timer
@@ -353,77 +348,78 @@ export default function TimerScreen() {
           </View>
 
           {/* ==================== TIMER SALVATI ==================== */}
-
           <View style={styles.savedCard}>
             <Text variant="title" style={styles.sectionTitle}>
               Timer Salvati
             </Text>
             <View style={styles.separator} />
 
-            {timers.length === 0 ? (
+            {timers.filter((t) => t.id !== "quick").length === 0 ? (
               <View style={styles.empty}>
                 <Ionicons name="timer-outline" size={70} color="#ccc" />
                 <Text style={styles.emptyText}>Nessun timer salvato</Text>
               </View>
             ) : (
-              timers.map((timer: any, index: number) => (
-                <View key={timer.id}>
-                  <View style={styles.timerItem}>
-                    <View style={styles.timerInfo}>
-                      <Text bold style={styles.timerTitle}>
-                        {timer.title}
-                      </Text>
-                      <Text style={styles.timerTime}>
-                        {formatTime(timer.remainingSeconds)}
-                      </Text>
+              timers
+                .filter((t) => t.id !== "quick")
+                .map((timer: any, index: number) => (
+                  <View key={timer.id}>
+                    <View style={styles.timerItem}>
+                      <View style={styles.timerInfo}>
+                        <Text bold style={styles.timerTitle}>
+                          {timer.title}
+                        </Text>
+                        <Text style={styles.timerTime}>
+                          {formatTime(timer.remainingSeconds)}
+                        </Text>
+                      </View>
+
+                      <View style={styles.timerControls}>
+                        <TouchableOpacity
+                          onPress={() => handleToggleSavedTimer(timer)}
+                        >
+                          <Ionicons
+                            name={
+                              timer.isRunning
+                                ? timer.isPaused
+                                  ? "play"
+                                  : "pause"
+                                : "play"
+                            }
+                            size={32}
+                            color={
+                              timer.isRunning
+                                ? timer.isPaused
+                                  ? COLORS.primary
+                                  : "#e74c3c"
+                                : COLORS.primary
+                            }
+                          />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => handleResetSavedTimer(timer)}
+                        >
+                          <Ionicons name="refresh" size={32} color="#7f8c8d" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => handleDeleteSavedTimer(timer)}
+                        >
+                          <Ionicons
+                            name="trash-outline"
+                            size={28}
+                            color="#e74c3c"
+                          />
+                        </TouchableOpacity>
+                      </View>
                     </View>
 
-                    <View style={styles.timerControls}>
-                      <TouchableOpacity
-                        onPress={() => handleToggleSavedTimer(timer)}
-                      >
-                        <Ionicons
-                          name={
-                            timer.isRunning
-                              ? timer.isPaused
-                                ? "play"
-                                : "pause"
-                              : "play"
-                          }
-                          size={32}
-                          color={
-                            timer.isRunning
-                              ? timer.isPaused
-                                ? COLORS.primary
-                                : "#e74c3c"
-                              : COLORS.primary
-                          }
-                        />
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => handleResetSavedTimer(timer)}
-                      >
-                        <Ionicons name="refresh" size={32} color="#7f8c8d" />
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => handleDeleteSavedTimer(timer)}
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={28}
-                          color="#e74c3c"
-                        />
-                      </TouchableOpacity>
-                    </View>
+                    {index < timers.length - 1 && (
+                      <View style={styles.separator} />
+                    )}
                   </View>
-
-                  {index < timers.length - 1 && (
-                    <View style={styles.separator} />
-                  )}
-                </View>
-              ))
+                ))
             )}
           </View>
         </ScrollView>
@@ -432,16 +428,13 @@ export default function TimerScreen() {
   );
 }
 
-// ==================== STILI ====================
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // backgroundColor: "#fffaf0",
     paddingTop: 50,
     marginBottom: -60,
   },
   header: {
-    // paddingVertical: 20,
     alignItems: "center",
   },
   title: {
@@ -461,28 +454,24 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 20,
   },
-
   cakeWrapper: {
     width: 300,
     height: 300,
     alignSelf: "center",
     marginVertical: 20,
   },
-
   cakeImage: {
     width: "100%",
     height: "100%",
     justifyContent: "center",
     alignItems: "center",
   },
-
   svgOverlay: {
     position: "absolute",
     width: "100%",
     height: "100%",
     transform: [{ scale: 300 / 1024 }],
   },
-
   textOverlay: {
     position: "absolute",
     top: 0,
@@ -493,7 +482,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     pointerEvents: "box-none",
   },
-
   pill: {
     backgroundColor: "rgb(255, 255, 255)",
     paddingHorizontal: 8,
@@ -504,12 +492,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-
   timerText: {
     fontSize: 64,
     lineHeight: 64,
   },
-
   timerTextInput: {
     fontSize: 56,
     fontFamily: "Outfit-SemiBold",
@@ -519,7 +505,6 @@ const styles = StyleSheet.create({
     minWidth: 160,
     lineHeight: 56,
   },
-
   quickControls: {
     flexDirection: "row",
     justifyContent: "center",
@@ -527,7 +512,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 30,
   },
-
   quickBtn: {
     width: 70,
     height: 70,
@@ -536,15 +520,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
-  // ==================== CARD NUOVO TIMER ====================
   sectionTitle: {
     fontSize: 22,
     textAlign: "center",
     marginBottom: 12,
     color: COLORS.text,
   },
-
   formCard: {
     backgroundColor: "white",
     marginHorizontal: 16,
@@ -557,7 +538,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-
   input: {
     backgroundColor: "#f8f9fa",
     padding: 14,
@@ -566,14 +546,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: "center",
   },
-
   timeRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 16,
   },
-
   timeInput: {
     width: 90,
     backgroundColor: "#f8f9fa",
@@ -582,9 +560,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     textAlign: "center",
   },
-
   colon: { fontSize: 32, color: "#666", marginHorizontal: 10 },
-
   addButton: {
     backgroundColor: COLORS.primary,
     padding: 16,
@@ -594,10 +570,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
   },
-
   addButtonText: { color: "white", fontSize: 18 },
-
-  // ==================== CARD TIMER SALVATI ====================
   savedCard: {
     backgroundColor: "white",
     marginHorizontal: 16,
@@ -610,44 +583,36 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-
   timerItem: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 10,
   },
-
   timerInfo: { flex: 1 },
-
   timerTitle: {
     fontSize: 18,
     marginBottom: 4,
   },
-
   timerTime: {
     fontSize: 28,
     color: COLORS.primary,
   },
-
   timerControls: {
     flexDirection: "row",
     alignItems: "center",
     gap: 16,
   },
-
   separator: {
     height: 1,
     backgroundColor: "#eee",
     marginVertical: 14,
   },
-
   empty: {
     alignItems: "center",
     marginTop: 20,
     marginBottom: 10,
   },
-
   emptyText: {
     fontSize: 18,
     color: "#888",

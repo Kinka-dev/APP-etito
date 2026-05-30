@@ -1,7 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-// import { Audio } from "expo-av";
-// import * as Notifications from "expo-notifications";
+import { Audio } from "expo-av";
+import * as Notifications from "expo-notifications";
 import { createContext, useContext, useEffect, useState } from "react";
+import { Platform } from "react-native";
 
 export type Timer = {
   id: string;
@@ -11,10 +12,13 @@ export type Timer = {
   isRunning: boolean;
   isPaused: boolean;
   endTime: number | null;
+  notificationId?: string | null;
+  hasNotified?: boolean; // ⭐ evita doppio suono
 };
 
 type TimerContextType = {
   timers: Timer[];
+  setTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
   addTimer: (title: string, duration: number) => void;
   startTimer: (id: string) => void;
   pauseTimer: (id: string) => void;
@@ -29,42 +33,106 @@ export const useTimers = () => useContext(TimerContext);
 export function TimerProvider({ children }: any) {
   const [timers, setTimers] = useState<Timer[]>([]);
 
-  // Carica timer salvati
+  // ==================== NOTIFICHE ====================
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+
+  // Canale Android
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      Notifications.setNotificationChannelAsync("timer-channel", {
+        name: "Timer",
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: "default",
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: "#FF231F7C",
+      });
+    }
+  }, []);
+
+  async function scheduleTimerNotification(seconds: number, title: string) {
+    return await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Timer terminato",
+        body: title,
+        sound: "default",
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds,
+        repeats: false,
+        channelId: "timer-channel",
+      },
+    });
+  }
+
+  async function cancelNotification(id?: string | null) {
+    if (id) {
+      try {
+        await Notifications.cancelScheduledNotificationAsync(id);
+      } catch {}
+    }
+  }
+
+  // ==================== SUONO ====================
+  async function playSound() {
+    const { sound } = await Audio.Sound.createAsync(
+      require("../assets/notifications/timer_end.wav"),
+    );
+    await sound.playAsync();
+  }
+
+  // ==================== STORAGE ====================
   useEffect(() => {
     AsyncStorage.getItem("timers").then((data) => {
       if (data) setTimers(JSON.parse(data));
     });
   }, []);
 
-  // Salva timer
   useEffect(() => {
     AsyncStorage.setItem("timers", JSON.stringify(timers));
   }, [timers]);
 
-  // Suono finale
-  // async function playSound() {
-  //   const { sound } = await Audio.Sound.createAsync(
-  //     require("../assets/sounds/timer-end.mp3"),
-  //   );
-  //   await sound.playAsync();
-  // }
+  // Richiesta permessi
+  useEffect(() => {
+    (async () => {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== "granted") {
+        console.log("Permessi notifica NON concessi");
+      }
+    })();
+  }, []);
 
-  // Notifica finale
-  async function scheduleTimerNotification(seconds: number, title: string) {
-    // return await Notifications.scheduleNotificationAsync({
-    //   content: {
-    //     title: "Timer terminato",
-    //     body: title,
-    //     sound: true,
-    //   },
-    //   trigger: {
-    //     type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-    //     seconds,
-    //     repeats: false,
-    //   },
-    // });
-  }
+  useEffect(() => {
+    setTimers((prev) => {
+      const exists = prev.some((t) => t.id === "quick");
+      if (exists) return prev;
 
+      return [
+        {
+          id: "quick",
+          title: "Quick Timer",
+          duration: 0,
+          remainingSeconds: 0,
+          isRunning: false,
+          isPaused: false,
+          endTime: null,
+          notificationId: null,
+          hasNotified: false,
+        },
+        ...prev,
+      ];
+    });
+  }, []);
+
+  // ==================== ADD ====================
   const addTimer = (title: string, duration: number) => {
     const newTimer: Timer = {
       id: Date.now().toString(),
@@ -74,11 +142,24 @@ export function TimerProvider({ children }: any) {
       isRunning: false,
       isPaused: false,
       endTime: null,
+      notificationId: null,
+      hasNotified: false,
     };
     setTimers((prev) => [...prev, newTimer]);
   };
 
-  const startTimer = (id: string) => {
+  // ==================== START ====================
+  const startTimer = async (id: string) => {
+    const timer = timers.find((t) => t.id === id);
+    if (!timer) return;
+
+    const endTime = Date.now() + timer.remainingSeconds * 1000;
+
+    const notificationId = await scheduleTimerNotification(
+      timer.remainingSeconds,
+      timer.title,
+    );
+
     setTimers((prev) =>
       prev.map((t) =>
         t.id === id
@@ -86,17 +167,27 @@ export function TimerProvider({ children }: any) {
               ...t,
               isRunning: true,
               isPaused: false,
-              endTime: Date.now() + t.remainingSeconds * 1000,
+              endTime,
+              notificationId,
+              hasNotified: false, // ⭐ reset
             }
           : t,
       ),
     );
-
-    const timer = timers.find((t) => t.id === id);
-    // if (timer) scheduleTimerNotification(timer.remainingSeconds, timer.title);
   };
 
-  const pauseTimer = (id: string) => {
+  // ==================== PAUSE ====================
+  const pauseTimer = async (id: string) => {
+    const timer = timers.find((t) => t.id === id);
+    if (!timer) return;
+
+    await cancelNotification(timer.notificationId);
+
+    const remaining = Math.max(
+      0,
+      Math.floor((timer.endTime! - Date.now()) / 1000),
+    );
+
     setTimers((prev) =>
       prev.map((t) =>
         t.id === id
@@ -104,18 +195,27 @@ export function TimerProvider({ children }: any) {
               ...t,
               isRunning: false,
               isPaused: true,
-              remainingSeconds: Math.max(
-                0,
-                Math.floor((t.endTime! - Date.now()) / 1000),
-              ),
+              remainingSeconds: remaining,
               endTime: null,
+              notificationId: null,
             }
           : t,
       ),
     );
   };
 
-  const resumeTimer = (id: string) => {
+  // ==================== RESUME ====================
+  const resumeTimer = async (id: string) => {
+    const timer = timers.find((t) => t.id === id);
+    if (!timer) return;
+
+    const endTime = Date.now() + timer.remainingSeconds * 1000;
+
+    const notificationId = await scheduleTimerNotification(
+      timer.remainingSeconds,
+      timer.title,
+    );
+
     setTimers((prev) =>
       prev.map((t) =>
         t.id === id
@@ -123,17 +223,22 @@ export function TimerProvider({ children }: any) {
               ...t,
               isRunning: true,
               isPaused: false,
-              endTime: Date.now() + t.remainingSeconds * 1000,
+              endTime,
+              notificationId,
+              hasNotified: false, // ⭐ reset
             }
           : t,
       ),
     );
-
-    const timer = timers.find((t) => t.id === id);
-    // if (timer) scheduleTimerNotification(timer.remainingSeconds, timer.title);
   };
 
-  const resetTimer = (id: string) => {
+  // ==================== RESET ====================
+  const resetTimer = async (id: string) => {
+    const timer = timers.find((t) => t.id === id);
+    if (!timer) return;
+
+    await cancelNotification(timer.notificationId);
+
     setTimers((prev) =>
       prev.map((t) =>
         t.id === id
@@ -143,17 +248,23 @@ export function TimerProvider({ children }: any) {
               isPaused: false,
               remainingSeconds: t.duration,
               endTime: null,
+              notificationId: null,
+              hasNotified: false,
             }
           : t,
       ),
     );
   };
 
-  const deleteTimer = (id: string) => {
+  // ==================== DELETE ====================
+  const deleteTimer = async (id: string) => {
+    const timer = timers.find((t) => t.id === id);
+    if (timer) await cancelNotification(timer.notificationId);
+
     setTimers((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Aggiorna i timer ogni secondo
+  // ==================== COUNTDOWN ====================
   useEffect(() => {
     const interval = setInterval(() => {
       setTimers((prev) =>
@@ -165,14 +276,33 @@ export function TimerProvider({ children }: any) {
             Math.floor((t.endTime - Date.now()) / 1000),
           );
 
+          // ⭐ Timer già finito nel passato → NON suonare di nuovo
+          if (t.endTime && Date.now() > t.endTime && !t.hasNotified) {
+            return {
+              ...t,
+              remainingSeconds: 0,
+              isRunning: false,
+              isPaused: false,
+              endTime: null,
+              notificationId: null,
+              hasNotified: true,
+            };
+          }
+
+          // ⭐ Timer che finisce ORA
           if (remaining === 0) {
-            // playSound();
+            if (!t.hasNotified) {
+              playSound();
+            }
+
             return {
               ...t,
               isRunning: false,
               isPaused: false,
               remainingSeconds: 0,
               endTime: null,
+              notificationId: null,
+              hasNotified: true,
             };
           }
 
@@ -188,6 +318,7 @@ export function TimerProvider({ children }: any) {
     <TimerContext.Provider
       value={{
         timers,
+        setTimers,
         addTimer,
         startTimer,
         pauseTimer,

@@ -1,6 +1,7 @@
 // src/components/RecipeCard.tsx
 import { shareRecipePDF } from "@/app/utils/shareRecipePDF";
 import Text from "@/components/Text";
+import { CATEGORY_LABELS } from "@/constants/categories";
 import { COLORS } from "@/constants/colors";
 import { useRecipeContext } from "@/context/RecipeContext";
 import { Recipe } from "@/src/types";
@@ -25,7 +26,9 @@ interface IngredientModalItem {
   checked?: boolean;
 }
 
-function IngredientsModal({
+let holdInterval: ReturnType<typeof setInterval> | null = null;
+
+export function IngredientsModal({
   visible,
   onClose,
   ingredients,
@@ -37,8 +40,23 @@ function IngredientsModal({
   onConfirm: (selected: IngredientModalItem[]) => void;
 }) {
   const [selected, setSelected] = useState(
-    ingredients.map((ing) => ({ ...ing, checked: true })),
+    ingredients.map((ing) => ({
+      ...ing,
+      quantity: Number(ing.quantity) || 0,
+      unit: ing.unit ?? "",
+      checked: true,
+    })),
   );
+
+  const startHold = (callback: () => void) => {
+    callback(); // esegue subito
+    holdInterval = setInterval(callback, 120); // ripete velocemente
+  };
+
+  const stopHold = () => {
+    if (holdInterval) clearInterval(holdInterval);
+    holdInterval = null;
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide">
@@ -50,27 +68,76 @@ function IngredientsModal({
 
           <ScrollView style={{ maxHeight: 300 }}>
             {selected.map((ing, i) => (
-              <TouchableOpacity
-                key={i}
-                style={modalStyles.row}
-                onPress={() => {
-                  const arr = [...selected];
-                  arr[i].checked = !arr[i].checked;
-                  setSelected(arr);
-                }}
-              >
-                <Ionicons
-                  name={ing.checked ? "checkbox" : "square-outline"}
-                  size={22}
-                  color="#3a8654"
-                />
-                <Text style={{ marginLeft: 8 }}>
-                  {ing.name} {ing.quantity} {ing.unit}
-                </Text>
-              </TouchableOpacity>
+              <View key={i} style={modalStyles.row}>
+                {/* CHECKBOX */}
+                <TouchableOpacity
+                  onPress={() => {
+                    const arr = [...selected];
+                    arr[i].checked = !arr[i].checked;
+                    setSelected(arr);
+                  }}
+                >
+                  <Ionicons
+                    name={ing.checked ? "checkbox" : "square-outline"}
+                    size={22}
+                    color="#3a8654"
+                  />
+                </TouchableOpacity>
+
+                {/* NOME */}
+                <Text style={{ marginLeft: 8, flex: 1 }}>{ing.name}</Text>
+
+                {/* QUANTITÀ + / - */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  {/* DECREMENTO */}
+                  <TouchableOpacity
+                    onPressIn={() =>
+                      startHold(() => {
+                        const arr = [...selected];
+                        const current = Number(arr[i].quantity) || 0;
+                        arr[i].quantity = Math.max(0, current - 1);
+                        setSelected(arr);
+                      })
+                    }
+                    onPressOut={stopHold}
+                    style={modalStyles.btn}
+                  >
+                    <Text style={modalStyles.btnText}>−</Text>
+                  </TouchableOpacity>
+
+                  {/* QUANTITÀ */}
+                  <Text style={modalStyles.qtyText}>{ing.quantity}</Text>
+
+                  {/* INCREMENTO */}
+                  <TouchableOpacity
+                    onPressIn={() =>
+                      startHold(() => {
+                        const arr = [...selected];
+                        const current = Number(arr[i].quantity) || 0;
+                        arr[i].quantity = current + 1;
+                        setSelected(arr);
+                      })
+                    }
+                    onPressOut={stopHold}
+                    style={modalStyles.btn}
+                  >
+                    <Text style={modalStyles.btnText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* UNITÀ (SOLO TESTO) */}
+                <Text style={modalStyles.unitText}>{ing.unit}</Text>
+              </View>
             ))}
           </ScrollView>
 
+          {/* BOTTONI */}
           <View style={modalStyles.buttons}>
             <TouchableOpacity onPress={onClose}>
               <Text>Annulla</Text>
@@ -106,11 +173,33 @@ const modalStyles = StyleSheet.create({
   title: {
     fontSize: 18,
     marginBottom: 12,
+    textAlign: "center",
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 10,
+  },
+  btn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: "#eee",
+    borderRadius: 6,
+  },
+  btnText: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  qtyText: {
+    width: 32,
+    textAlign: "center",
+    fontSize: 16,
+  },
+  unitText: {
+    marginLeft: 6,
+    width: 30,
+    textAlign: "center",
+    fontSize: 14,
   },
   buttons: {
     flexDirection: "row",
@@ -133,7 +222,6 @@ export default function RecipeCard({ recipe, onPress }: RecipeCardProps) {
 
   return (
     <View style={{ position: "relative" }}>
-      {/* ⋯ MENU SEMPRE VISIBILE */}
       <TouchableOpacity
         style={styles.menuButton}
         onPress={() => setOpenActions(!openActions)}
@@ -170,7 +258,12 @@ export default function RecipeCard({ recipe, onPress }: RecipeCardProps) {
               ? { uri: recipe.imageUri }
               : require("../assets/images/default.jpg")
           }
-          style={styles.image}
+          style={[
+            styles.image,
+            {
+              height: (recipe.tags ?? []).length > 0 ? "55%" : "65%",
+            },
+          ]}
         />
 
         {/* 📄 CONTENUTO */}
@@ -180,7 +273,7 @@ export default function RecipeCard({ recipe, onPress }: RecipeCardProps) {
           </Text>
 
           <Text bold style={styles.categoryText}>
-            ••• {recipe.category} •••
+            ••• {CATEGORY_LABELS[recipe.category]} •••
           </Text>
 
           <View style={styles.infoRow}>
@@ -202,11 +295,13 @@ export default function RecipeCard({ recipe, onPress }: RecipeCardProps) {
             horizontal
             showsHorizontalScrollIndicator={false}
             style={styles.tagsUnderImage}
-            contentContainerStyle={{ gap: 6 }}
+            contentContainerStyle={{ gap: 10 }}
           >
             {recipe.tags?.map((tag, index) => (
               <View key={index} style={styles.tag}>
-                <Text style={styles.tagText}>#{tag}</Text>
+                <Text bold style={styles.tagText}>
+                  #{tag}
+                </Text>
               </View>
             ))}
           </ScrollView>
@@ -345,65 +440,77 @@ export default function RecipeCard({ recipe, onPress }: RecipeCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    flexDirection: "row",
     backgroundColor: "white",
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 16,
+    borderRadius: 18,
+    overflow: "hidden",
+    marginBottom: 20,
+    width: "100%",
+    aspectRatio: 1, // ⭐ quadrata perfetta
+    elevation: 4,
     shadowColor: "#000",
     shadowOpacity: 0.08,
     shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
     position: "relative",
   },
 
+  // ❤️ CUORE
   favoriteButton: {
     position: "absolute",
-    top: 10,
-    left: 10,
+    top: 12,
+    left: 12,
     zIndex: 20,
-    backgroundColor: "white",
-    padding: 4,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    padding: 6,
     borderRadius: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
 
+  // ⋯ MENU
+  menuButton: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    zIndex: 9999,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    padding: 6,
+    borderRadius: 20,
+  },
+
+  // 📸 IMMAGINE GRANDE
   image: {
-    width: 140,
-    height: 140,
-    borderRadius: 14,
+    width: "100%",
+    height: "55%", // ⭐ immagine grande sopra
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
     backgroundColor: "#f0f0f0",
   },
 
+  // 📄 CONTENUTO SOTTO L’IMMAGINE
   content: {
+    padding: 14,
     flex: 1,
-    marginLeft: 12,
     justifyContent: "center",
-    maxHeight: 150,
+    alignItems: "center",
   },
 
   title: {
-    fontSize: 17,
+    fontSize: 18,
     color: COLORS.text,
     marginBottom: 4,
-    paddingRight: 30,
   },
 
   categoryText: {
-    fontSize: 13,
+    fontSize: 12,
     color: COLORS.primary,
-    marginBottom: 6,
+    marginBottom: 8,
+    textAlign: "center",
   },
 
   infoRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    marginBottom: 6,
+    justifyContent: "space-between",
+    marginTop: 6,
+    gap: 10,
   },
 
   infoItem: {
@@ -414,35 +521,27 @@ const styles = StyleSheet.create({
 
   infoText: {
     fontSize: 12,
-    color: COLORS.textLight,
+    color: COLORS.text,
   },
 
-  tagsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 4,
+  // TAGS
+  tagsUnderImage: {
+    marginTop: 10,
   },
 
   tag: {
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 5,
-    borderRadius: 12,
+    paddingHorizontal: 8,
+    borderRadius: 20,
+    justifyContent: "center",
   },
 
   tagText: {
-    fontSize: 10,
+    fontSize: 11,
     color: "white",
   },
 
-  menuButton: {
-    position: "absolute",
-    top: 20,
-    right: 20,
-    zIndex: 200,
-    backgroundColor: "white",
-  },
-
+  // OVERLAY AZIONI
   overlayBackground: {
     position: "absolute",
     top: 0,
@@ -460,7 +559,7 @@ const styles = StyleSheet.create({
     right: 0,
     left: 0,
     backgroundColor: "white",
-    borderRadius: 16,
+    borderRadius: 18,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-around",
@@ -487,10 +586,5 @@ const styles = StyleSheet.create({
     width: 1,
     height: 32,
     backgroundColor: "#eee",
-  },
-
-  tagsUnderImage: {
-    marginTop: 6,
-    maxHeight: 24, // ⭐ impedisce alla card di crescere
   },
 });
