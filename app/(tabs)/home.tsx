@@ -25,6 +25,7 @@ import {
 } from "react-native";
 import { TextInput } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { debugDuplicateIngredientKeys } from "../utils/debugNutrition";
 
 export default function RecipesScreen() {
   const { recipes, addToShoppingList, deleteRecipe } = useRecipeContext();
@@ -53,7 +54,6 @@ export default function RecipesScreen() {
       icon: CATEGORY_IMAGES[cat],
     })),
   ];
-  console.log("CATEGORY_ITEMS:", CATEGORY_ITEMS);
 
   const filteredRecipes = useMemo(() => {
     const lowerSearch = search.toLowerCase().trim();
@@ -92,6 +92,10 @@ export default function RecipesScreen() {
       ]).start();
     }
   }, [favCount]);
+
+  useEffect(() => {
+    debugDuplicateIngredientKeys();
+  }, []);
 
   return (
     <ImageBackground
@@ -243,7 +247,7 @@ const styles = StyleSheet.create({
   emptyContainer: {
     alignItems: "center",
     justifyContent: "center",
-    padding: 60,
+    padding: 100,
   },
   emptyText: {
     fontSize: 18,

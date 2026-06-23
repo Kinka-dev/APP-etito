@@ -1,190 +1,254 @@
 import Text from "@/components/Text";
-import React, { useEffect, useState } from "react";
-import { Animated, Easing, View } from "react-native";
-import Svg, { G, Path } from "react-native-svg";
+import React, { useEffect, useRef } from "react";
+import { Animated, Easing, Image, View } from "react-native";
 
-type Props = {
-  carbs: number;
-  protein: number;
-  fat: number;
-  size?: number;
-};
-
-function arcPath(start: number, end: number, r: number) {
-  const x1 = r + r * Math.cos(start);
-  const y1 = r + r * Math.sin(start);
-  const x2 = r + r * Math.cos(end);
-  const y2 = r + r * Math.sin(end);
-  const largeArc = end - start > Math.PI ? 1 : 0;
-
-  return `M${r},${r} L${x1},${y1} A${r},${r} 0 ${largeArc} 1 ${x2},${y2} Z`;
-}
-
-export default function PieChartMini({
+export default function GlassBarChart({
   carbs,
   protein,
   fat,
-  size = 130,
-}: Props) {
-  const total = carbs + protein + fat || 1;
-  const r = size / 2;
+  totalWeight,
+}: {
+  carbs: number;
+  protein: number;
+  fat: number;
+  totalWeight: number;
+}) {
+  const BASE_WIDTH = 250;
+  const BASE_HEIGHT = 500;
 
-  const carbsAngle = (carbs / total) * 2 * Math.PI;
-  const proteinAngle = (protein / total) * 2 * Math.PI;
-  const fatAngle = (fat / total) * 2 * Math.PI;
+  const SCALE = 0.25;
+  const WIDTH = BASE_WIDTH * SCALE;
+  const HEIGHT = BASE_HEIGHT * SCALE;
 
-  const carbsPct = Math.round((carbs / total) * 100);
-  const proteinPct = Math.round((protein / total) * 100);
-  const fatPct = Math.round((fat / total) * 100);
+  // ⭐ Fallback anti-NaN
+  const safeTotal = totalWeight > 0 ? totalWeight : 1;
 
-  // progress archi (0 → 1)
-  const [p1, setP1] = useState(0);
-  const [p2, setP2] = useState(0);
-  const [p3, setP3] = useState(0);
+  // ⭐ Calcolo acqua
+  const water = Math.max(totalWeight - (carbs + protein + fat), 0);
 
-  const hasPie = carbs + protein + fat > 0;
+  // ⭐ Percentuali sicure
+  const carbsPct = totalWeight > 0 ? carbs / safeTotal : 0;
+  const proteinPct = totalWeight > 0 ? protein / safeTotal : 0;
+  const fatPct = totalWeight > 0 ? fat / safeTotal : 0;
+  const waterPct = totalWeight > 0 ? water / safeTotal : 0;
 
-  // percentuali visualizzate
-  const [carbsView, setCarbsView] = useState(0);
-  const [proteinView, setProteinView] = useState(0);
-  const [fatView, setFatView] = useState(0);
+  // ⭐ Animated.Value creati UNA SOLA VOLTA
+  const animCarbs = useRef(new Animated.Value(0)).current;
+  const animProtein = useRef(new Animated.Value(0)).current;
+  const animFat = useRef(new Animated.Value(0)).current;
+  const animWater = useRef(new Animated.Value(0)).current;
 
-  const slideAnim = useState(new Animated.Value(-40))[0];
-
-  // animazione archi “a raggio”
+  // ⭐ Animazione
   useEffect(() => {
-    let mounted = true;
+    if (totalWeight === 0) {
+      Animated.parallel([
+        Animated.timing(animCarbs, {
+          toValue: 0,
+          duration: 600,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.timing(animProtein, {
+          toValue: 0,
+          duration: 600,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.timing(animFat, {
+          toValue: 0,
+          duration: 600,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.timing(animWater, {
+          toValue: 0,
+          duration: 600,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+      ]).start();
+      return;
+    }
 
-    // reset animazioni
-    setP1(0);
-    setP2(0);
-    setP3(0);
+    const animations = [
+      Animated.timing(animCarbs, {
+        toValue: carbsPct,
+        duration: 900,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      Animated.timing(animProtein, {
+        toValue: proteinPct,
+        duration: 900,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      Animated.timing(animFat, {
+        toValue: fatPct,
+        duration: 900,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      Animated.timing(animWater, {
+        toValue: waterPct,
+        duration: 900,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: false,
+      }),
+    ];
 
-    const animate = (
-      setter: React.Dispatch<React.SetStateAction<number>>,
-      duration: number,
-      cb?: () => void,
-    ) => {
-      const start = Date.now();
-      const loop = () => {
-        if (!mounted) return;
-        const t = (Date.now() - start) / duration;
-        if (t >= 1) {
-          setter(1);
-          cb && cb();
-          return;
-        }
-        const eased = Easing.out(Easing.cubic)(t);
-        setter(eased);
-        requestAnimationFrame(loop);
-      };
-      requestAnimationFrame(loop);
-    };
+    Animated.stagger(120, animations).start();
+  }, [carbsPct, proteinPct, fatPct, waterPct, totalWeight]);
 
-    animate(setP1, 150, () => {
-      animate(setP2, 150, () => {
-        animate(setP3, 150);
-      });
+  // ⭐ Barattolo
+  const Bar = ({
+    image,
+    progress,
+    grams,
+  }: {
+    image: any;
+    progress: Animated.Value;
+    grams: number;
+  }) => {
+    const animatedHeight = progress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [7, HEIGHT],
     });
 
-    return () => {
-      mounted = false;
-    };
-  }, [carbs, protein, fat]);
+    return (
+      <View
+        style={{
+          width: WIDTH,
+          height: HEIGHT,
+          position: "relative",
+          justifyContent: "flex-start",
+          alignItems: "center",
+        }}
+      >
+        {/* Etichetta centrale */}
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 10,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "white",
+              paddingVertical: 4,
+              paddingHorizontal: 10,
+              borderRadius: 10,
+              elevation: 3,
+            }}
+          >
+            <Text bold style={{ fontSize: 14 }}>
+              {Math.round(grams)}g
+            </Text>
+          </View>
+        </View>
 
-  // animazione count‑up percentuali
-  useEffect(() => {
-    let mounted = true;
-    const duration = 600;
-    const start = Date.now();
+        {/* Cilindro vuoto */}
+        <Image
+          source={require("../assets/images/cylinder_empty.png")}
+          style={{
+            width: WIDTH,
+            height: HEIGHT,
+            position: "absolute",
+            top: 0,
+            left: 0,
+          }}
+        />
 
-    const loop = () => {
-      if (!mounted) return;
-      const t = (Date.now() - start) / duration;
-      if (t >= 1) {
-        setCarbsView(carbsPct);
-        setProteinView(proteinPct);
-        setFatView(fatPct);
-        return;
-      }
-      const eased = Easing.out(Easing.cubic)(t);
-      setCarbsView(Math.round(carbsPct * eased));
-      setProteinView(Math.round(proteinPct * eased));
-      setFatView(Math.round(fatPct * eased));
-      requestAnimationFrame(loop);
-    };
-
-    requestAnimationFrame(loop);
-
-    return () => {
-      mounted = false;
-    };
-  }, [carbsPct, proteinPct, fatPct]);
-
-  useEffect(() => {
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 350,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [carbs, protein, fat]);
+        {/* Contenuto */}
+        <Animated.View
+          style={{
+            position: "absolute",
+            bottom: 0,
+            width: WIDTH,
+            height: animatedHeight,
+            overflow: "hidden",
+          }}
+        >
+          <Image
+            source={image}
+            style={{
+              width: WIDTH,
+              height: HEIGHT,
+              position: "absolute",
+              bottom: 0,
+            }}
+          />
+        </Animated.View>
+      </View>
+    );
+  };
 
   return (
     <View
       style={{
-        flexDirection: hasPie ? "row" : "column", // ⭐ legenda centrata quando non c’è la torta
-        alignItems: "center",
-        justifyContent: hasPie ? "flex-start" : "center",
-        gap: hasPie ? 20 : 10,
-        backgroundColor: "white",
+        flexDirection: "row",
+        justifyContent: "center",
+        alignItems: "flex-start",
+        gap: 20,
       }}
     >
-      {/* Pie chart solo se ci sono valori */}
-      {hasPie && (
-        <Animated.View style={{ transform: [{ translateX: slideAnim }] }}>
-          <Svg width={size} height={size}>
-            <G>
-              <Path d={arcPath(0, carbsAngle * p1, r)} fill="#00a56e" />
-              <Path
-                d={arcPath(carbsAngle, carbsAngle + proteinAngle * p2, r)}
-                fill="#b292ad"
-              />
-              <Path
-                d={arcPath(
-                  carbsAngle + proteinAngle,
-                  carbsAngle + proteinAngle + fatAngle * p3,
-                  r,
-                )}
-                fill="#ffc800"
-              />
-            </G>
-          </Svg>
-        </Animated.View>
-      )}
-
-      {/* Legenda */}
-      <View style={{ gap: 6, alignItems: hasPie ? "flex-start" : "center" }}>
-        <Text style={{ fontSize: 11 }}>
-          <Text bold style={{ color: "#00a56e" }}>
-            {carbsView}%
-          </Text>{" "}
-          Carboidrati
+      {/* CARBS */}
+      <View style={{ width: WIDTH, alignItems: "center" }}>
+        <Bar
+          image={require("../assets/images/rice.png")}
+          progress={animCarbs}
+          grams={carbs}
+        />
+        <Text bold style={{ fontSize: 18, marginTop: 10 }}>
+          {Math.round(carbsPct * 100)}%
         </Text>
+        <Text style={{ fontSize: 14 }}>Carbs</Text>
+      </View>
 
-        <Text style={{ fontSize: 11 }}>
-          <Text bold style={{ color: "#b292ad" }}>
-            {proteinView}%
-          </Text>{" "}
-          Proteine
-        </Text>
+      {/* PROTEIN */}
 
-        <Text style={{ fontSize: 11 }}>
-          <Text bold style={{ color: "#ffc800" }}>
-            {fatView}%
-          </Text>{" "}
-          Grassi
+      <View style={{ width: WIDTH, alignItems: "center" }}>
+        <Bar
+          image={require("../assets/images/beans.png")}
+          progress={animProtein}
+          grams={protein}
+        />
+        <Text bold style={{ fontSize: 18, marginTop: 10 }}>
+          {Math.round(proteinPct * 100)}%
         </Text>
+        <Text style={{ fontSize: 14 }}>Proteine</Text>
+      </View>
+
+      {/* FAT */}
+      <View style={{ width: WIDTH, alignItems: "center" }}>
+        <Bar
+          image={require("../assets/images/oil.png")}
+          progress={animFat}
+          grams={fat}
+        />
+        <Text bold style={{ fontSize: 18, marginTop: 10 }}>
+          {Math.round(fatPct * 100)}%
+        </Text>
+        <Text style={{ fontSize: 14 }}>Grassi</Text>
+      </View>
+
+      {/* WATER */}
+      <View style={{ width: WIDTH, alignItems: "center" }}>
+        <Bar
+          image={require("../assets/images/water.png")}
+          progress={animWater}
+          grams={water}
+        />
+        <Text bold style={{ fontSize: 18, marginTop: 10 }}>
+          {Math.round(waterPct * 100)}%
+        </Text>
+        <Text style={{ fontSize: 14 }}>Acqua & Micros</Text>
       </View>
     </View>
   );

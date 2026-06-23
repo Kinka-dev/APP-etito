@@ -1,4 +1,5 @@
 // app/scale/[id].tsx
+import Input from "@/components/Input";
 import Text from "@/components/Text";
 import { COLORS } from "@/constants/colors";
 import { useRecipeContext } from "@/context/RecipeContext";
@@ -84,7 +85,7 @@ export default function ScaleRecipeScreen() {
         const newQty = originalQty * ratio;
         return {
           ...ing,
-          quantity: newQty.toFixed(2).replace(/\.00$/, ""),
+          quantity: Number(newQty.toFixed(2)),
         };
       }),
     }));
@@ -312,9 +313,9 @@ export default function ScaleRecipeScreen() {
 
                     {/* Quantità ricalcolata */}
                     <View style={styles.colNew}>
-                      <TextInput
+                      <Input
                         style={styles.newValueInput}
-                        value={newValue === "—" ? "" : newValue}
+                        value={newValue === "—" ? "" : String(newValue)}
                         placeholder={newValue === "—" ? "—" : undefined}
                         onChangeText={(v) => onChangeIngredient(ing, v)}
                         keyboardType="numeric"

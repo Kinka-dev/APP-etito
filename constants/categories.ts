@@ -45,7 +45,7 @@ export const CATEGORY_IMAGES: Record<Category, any> = {
   zuppe: require("../assets/images/vellutate.png"),
   panini: require("../assets/images/panini.png"),
   colazione: require("../assets/images/colazione.png"),
-  dolci: require("../assets/images/dolci.png"),
+  dolci: require("../assets/images/torta.png"),
   condimenti: require("../assets/images/salse.png"),
   bevande: require("../assets/images/bevande.png"),
   impasti: require("../assets/images/impasti.png"),

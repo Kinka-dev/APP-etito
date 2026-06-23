@@ -669,12 +669,6 @@ export const pasta_riso_farine = {
     protein: 0.3,
     fat: 0.1,
   },
-  "fecola di patate": {
-    kcal: 351,
-    carbs: 83.0,
-    protein: 0.1,
-    fat: 0.1,
-  },
 };
 
 export const carni_salumi = {
@@ -916,8 +910,41 @@ export const carni_salumi = {
   "carne macinata bovino": { kcal: 250, carbs: 0, protein: 26, fat: 17 },
   "carne macinata suino": { kcal: 263, carbs: 0, protein: 17, fat: 21 },
   "petto di tacchino": { kcal: 107, carbs: 0, protein: 24, fat: 1.2 },
-  "tonno in scatola sgocciolato": { kcal: 116, carbs: 0, protein: 26, fat: 1 },
-  "salmone fresco": { kcal: 208, carbs: 0, protein: 20, fat: 13 },
+  "spalla di maiale": { kcal: 260, carbs: 0, protein: 21, fat: 19 },
+  "coppa di maiale fresca": { kcal: 290, carbs: 0, protein: 20, fat: 23 },
+  "pancetta fresca": { kcal: 518, carbs: 0, protein: 9, fat: 53 },
+  "stinco di maiale": { kcal: 240, carbs: 0, protein: 18, fat: 18 },
+  "prosciutto di maiale fresco": { kcal: 210, carbs: 0, protein: 29, fat: 9 },
+  pecora: { kcal: 245, carbs: 0, protein: 25, fat: 16 },
+  montone: { kcal: 280, carbs: 0, protein: 24, fat: 20 },
+  "agnello coscia": { kcal: 240, carbs: 0, protein: 23, fat: 17 },
+  "agnello spalla": { kcal: 310, carbs: 0, protein: 20, fat: 26 },
+  "coscia di tacchino": { kcal: 170, carbs: 0, protein: 24, fat: 7 },
+  "petto di anatra senza pelle": { kcal: 140, carbs: 0, protein: 23, fat: 5 },
+  quaglia: { kcal: 227, carbs: 0, protein: 25, fat: 14 },
+  faraona: { kcal: 158, carbs: 0, protein: 23, fat: 6 },
+  piccione: { kcal: 294, carbs: 0, protein: 25, fat: 21 },
+  cervo: { kcal: 157, carbs: 0, protein: 30, fat: 3 },
+  daino: { kcal: 120, carbs: 0, protein: 22, fat: 3 },
+  cinghiale: { kcal: 160, carbs: 0, protein: 21, fat: 7 },
+  struzzo: { kcal: 142, carbs: 0, protein: 29, fat: 2 },
+  bufalo: { kcal: 146, carbs: 0, protein: 29, fat: 2 },
+  "prosciutto di parma": { kcal: 268, carbs: 0.3, protein: 26, fat: 18 },
+  "prosciutto di san daniele": { kcal: 270, carbs: 0.3, protein: 26, fat: 18 },
+  culatello: { kcal: 196, carbs: 0.5, protein: 26, fat: 10 },
+  "fiocco di prosciutto": { kcal: 210, carbs: 0.5, protein: 27, fat: 11 },
+  lonzino: { kcal: 180, carbs: 0, protein: 30, fat: 6 },
+  "bresaola punta d'anca": { kcal: 151, carbs: 2, protein: 32, fat: 2 },
+  ventricina: { kcal: 480, carbs: 1, protein: 22, fat: 43 },
+  nduja: { kcal: 515, carbs: 1, protein: 14, fat: 52 },
+  "salame napoli": { kcal: 430, carbs: 1, protein: 22, fat: 38 },
+  "salame toscano": { kcal: 450, carbs: 1, protein: 21, fat: 41 },
+  bacon: { kcal: 541, carbs: 1.4, protein: 37, fat: 42 },
+  pastrami: { kcal: 147, carbs: 1, protein: 21, fat: 6 },
+  "prosciutto serrano": { kcal: 241, carbs: 0.3, protein: 31, fat: 13 },
+  "prosciutto iberico": { kcal: 375, carbs: 0.3, protein: 30, fat: 28 },
+  chorizo: { kcal: 455, carbs: 2, protein: 24, fat: 38 },
+  pepperoni: { kcal: 494, carbs: 1, protein: 23, fat: 44 },
 };
 
 export const pesce_frutti_di_mare = {
@@ -1146,6 +1173,43 @@ export const pesce_frutti_di_mare = {
     protein: 23.0,
     fat: 1.0,
   },
+  platessa: { kcal: 90, carbs: 0, protein: 18, fat: 1.5 },
+  sogliola: { kcal: 83, carbs: 0, protein: 16.5, fat: 1.4 },
+  halibut: { kcal: 140, carbs: 0, protein: 27, fat: 3 },
+  cernia: { kcal: 118, carbs: 0, protein: 23, fat: 2 },
+  "rana pescatrice": { kcal: 76, carbs: 0, protein: 15, fat: 1 },
+  palombo: { kcal: 130, carbs: 0, protein: 21, fat: 4 },
+  smeriglio: { kcal: 130, carbs: 0, protein: 21, fat: 4 },
+  aringa: { kcal: 158, carbs: 0, protein: 18, fat: 9 },
+  "aringa affumicata": { kcal: 217, carbs: 0, protein: 25, fat: 12 },
+  "sgombro affumicato": { kcal: 222, carbs: 0, protein: 25, fat: 12 },
+  alaccia: { kcal: 160, carbs: 0, protein: 20, fat: 8 },
+  aguglia: { kcal: 110, carbs: 0, protein: 20, fat: 3 },
+  "salmonello (salmon trout)": { kcal: 208, carbs: 0, protein: 20, fat: 13 },
+  ricciola: { kcal: 146, carbs: 0, protein: 23, fat: 5 },
+  tonnetto: { kcal: 130, carbs: 0, protein: 29, fat: 1 },
+  "spigola da sushi": { kcal: 124, carbs: 0, protein: 21, fat: 4 },
+  "orata da sushi": { kcal: 121, carbs: 0, protein: 20, fat: 4 },
+  totano: { kcal: 92, carbs: 3, protein: 16, fat: 1.4 },
+  "lumachino di mare": { kcal: 90, carbs: 2, protein: 16, fat: 1 },
+  canolicchi: { kcal: 72, carbs: 3, protein: 12, fat: 0.8 },
+  telline: { kcal: 74, carbs: 2.6, protein: 12, fat: 0.8 },
+  murici: { kcal: 90, carbs: 2, protein: 16, fat: 1 },
+  mazzancolle: { kcal: 85, carbs: 0.2, protein: 20, fat: 0.3 },
+  "gamberone argentino": { kcal: 99, carbs: 0.2, protein: 24, fat: 0.3 },
+  "granchio reale": { kcal: 97, carbs: 0, protein: 21, fat: 1.5 },
+  "cicala di mare": { kcal: 90, carbs: 0, protein: 19, fat: 1 },
+  canocchie: { kcal: 90, carbs: 0, protein: 19, fat: 1 },
+  "baccalà ammollato": { kcal: 105, carbs: 0, protein: 23, fat: 1 },
+  stoccafisso: { kcal: 360, carbs: 0, protein: 80, fat: 2 },
+  "salmon lox": { kcal: 117, carbs: 0, protein: 18, fat: 4 },
+  "aringa marinata": { kcal: 203, carbs: 9, protein: 18, fat: 11 },
+  "acciughe sotto sale": { kcal: 210, carbs: 0, protein: 29, fat: 10 },
+  "alga wakame": { kcal: 45, carbs: 9, protein: 3, fat: 0.6 },
+  "alga kombu": { kcal: 43, carbs: 9, protein: 2, fat: 0.5 },
+  "alga dulse": { kcal: 74, carbs: 12, protein: 8, fat: 0.5 },
+  "alga spirulina secca": { kcal: 290, carbs: 24, protein: 57, fat: 7 },
+  "alga chlorella": { kcal: 410, carbs: 23, protein: 58, fat: 12 },
 };
 
 export const latticini_formaggi = {
@@ -1214,30 +1278,12 @@ export const latticini_formaggi = {
     protein: 3.0,
     fat: 19.0,
   },
-  "panna montata": {
-    kcal: 257,
-    carbs: 12.0,
-    protein: 2.0,
-    fat: 22.0,
-  },
 
-  burro: {
-    kcal: 717,
-    carbs: 0.1,
-    protein: 0.5,
-    fat: 81.0,
-  },
   "burro chiarificato": {
     kcal: 900,
     carbs: 0.0,
     protein: 0.0,
     fat: 100.0,
-  },
-  margarina: {
-    kcal: 717,
-    carbs: 0.7,
-    protein: 0.2,
-    fat: 80.0,
   },
 
   "ricotta vaccina": {
@@ -1430,6 +1476,44 @@ export const latticini_formaggi = {
     protein: 3.5,
     fat: 3.0,
   },
+  stracciatella: { kcal: 300, carbs: 2, protein: 7, fat: 28 },
+  burrata: { kcal: 350, carbs: 2, protein: 12, fat: 32 },
+  "cottage cheese": { kcal: 98, carbs: 3.4, protein: 11, fat: 4.3 },
+  "quark magro": { kcal: 67, carbs: 4, protein: 12, fat: 0.2 },
+  "quark intero": { kcal: 105, carbs: 4, protein: 11, fat: 5 },
+  skyr: { kcal: 63, carbs: 4, protein: 11, fat: 0.2 },
+  burro: { kcal: 717, carbs: 0.1, protein: 0.5, fat: 81 },
+  "burro light": { kcal: 382, carbs: 1, protein: 1, fat: 41 },
+  "panna acida": { kcal: 193, carbs: 3, protein: 2, fat: 20 },
+  "crème fraîche": { kcal: 292, carbs: 2.9, protein: 2.1, fat: 30 },
+  "latte condensato zuccherato": { kcal: 321, carbs: 54, protein: 8, fat: 8 },
+  "latte evaporato": { kcal: 135, carbs: 10, protein: 7, fat: 7 },
+  "latticello (buttermilk)": { kcal: 40, carbs: 4.8, protein: 3.3, fat: 1 },
+  "yogurt greco 0%": { kcal: 59, carbs: 3.6, protein: 10, fat: 0 },
+  "yogurt greco 5%": { kcal: 133, carbs: 3.6, protein: 8.7, fat: 10 },
+  taleggio: { kcal: 314, carbs: 0.5, protein: 19, fat: 26 },
+  caciotta: { kcal: 286, carbs: 1, protein: 20, fat: 22 },
+  "ricotta salata": { kcal: 280, carbs: 3, protein: 22, fat: 20 },
+  "scamorza bianca": { kcal: 330, carbs: 1.5, protein: 25, fat: 25 },
+  montasio: { kcal: 330, carbs: 1, protein: 25, fat: 25 },
+  piave: { kcal: 400, carbs: 0, protein: 28, fat: 32 },
+  "provolone piccante": { kcal: 370, carbs: 2, protein: 26, fat: 30 },
+  "chèvre (caprino)": { kcal: 364, carbs: 0.1, protein: 21, fat: 30 },
+  roquefort: { kcal: 369, carbs: 2, protein: 21, fat: 31 },
+  comté: { kcal: 410, carbs: 0, protein: 27, fat: 34 },
+  reblochon: { kcal: 330, carbs: 0, protein: 20, fat: 27 },
+  munster: { kcal: 368, carbs: 1.5, protein: 23, fat: 30 },
+  sbrinz: { kcal: 450, carbs: 0, protein: 33, fat: 36 },
+  raclette: { kcal: 356, carbs: 0.1, protein: 25, fat: 28 },
+  cheddar: { kcal: 403, carbs: 1.3, protein: 25, fat: 33 },
+  "cheddar light": { kcal: 280, carbs: 2, protein: 30, fat: 16 },
+  stilton: { kcal: 393, carbs: 0.1, protein: 23, fat: 35 },
+  "red leicester": { kcal: 410, carbs: 0.1, protein: 25, fat: 34 },
+  feta: { kcal: 265, carbs: 4, protein: 14, fat: 21 },
+  halloumi: { kcal: 321, carbs: 2.2, protein: 22, fat: 25 },
+  paneer: { kcal: 296, carbs: 2, protein: 18, fat: 23 },
+  manchego: { kcal: 376, carbs: 0, protein: 25, fat: 31 },
+  "queso fresco": { kcal: 310, carbs: 3, protein: 18, fat: 25 },
 };
 
 export const verdure = {
@@ -1690,6 +1774,44 @@ export const verdure = {
     protein: 5.0,
     fat: 2.0,
   },
+  cetriolo: { kcal: 15, carbs: 3.6, protein: 0.7, fat: 0.1 },
+  scarola: { kcal: 17, carbs: 3.4, protein: 1.3, fat: 0.2 },
+  cicoria: { kcal: 23, carbs: 4.7, protein: 1.7, fat: 0.3 },
+  "bietola da costa": { kcal: 19, carbs: 3.7, protein: 1.8, fat: 0.2 },
+  "peperoncino fresco": { kcal: 40, carbs: 9, protein: 2, fat: 0.4 },
+  "pomodori secchi": { kcal: 258, carbs: 56, protein: 14, fat: 3 },
+  "olive verdi": { kcal: 145, carbs: 3.8, protein: 1, fat: 15 },
+  "olive nere": { kcal: 350, carbs: 6, protein: 1, fat: 32 },
+  topinambur: { kcal: 73, carbs: 17, protein: 2, fat: 0.1 },
+  daikon: { kcal: 18, carbs: 4, protein: 0.6, fat: 0.1 },
+  rapanello: { kcal: 16, carbs: 3.4, protein: 0.7, fat: 0.1 },
+  "sedano rapa": { kcal: 42, carbs: 9.2, protein: 1.5, fat: 0.3 },
+  "barbabietola cotta": { kcal: 44, carbs: 10, protein: 1.7, fat: 0.2 },
+  "zenzero fresco": { kcal: 80, carbs: 18, protein: 1.8, fat: 0.8 },
+  "funghi shiitake": { kcal: 34, carbs: 7, protein: 2.2, fat: 0.5 },
+  "funghi portobello": { kcal: 22, carbs: 3.3, protein: 2.1, fat: 0.3 },
+  "funghi pleurotus": { kcal: 33, carbs: 6, protein: 3.3, fat: 0.4 },
+  "funghi chiodini": { kcal: 30, carbs: 5, protein: 2.7, fat: 0.3 },
+  "cavoletti di bruxelles": { kcal: 43, carbs: 9, protein: 3.4, fat: 0.3 },
+  "broccolo romano": { kcal: 31, carbs: 6, protein: 2.5, fat: 0.3 },
+  "cavolo rapa": { kcal: 27, carbs: 6.2, protein: 1.7, fat: 0.1 },
+  songino: { kcal: 21, carbs: 3.6, protein: 2, fat: 0.4 },
+  misticanza: { kcal: 20, carbs: 3, protein: 2, fat: 0.3 },
+  "baby spinach": { kcal: 23, carbs: 3.6, protein: 2.9, fat: 0.4 },
+  kale: { kcal: 49, carbs: 9, protein: 4.3, fat: 0.9 },
+  "pak choi": { kcal: 13, carbs: 2.2, protein: 1.5, fat: 0.2 },
+  "bok choy": { kcal: 13, carbs: 2.2, protein: 1.5, fat: 0.2 },
+  "germogli di bambù": { kcal: 27, carbs: 5.2, protein: 2.6, fat: 0.3 },
+  edamame: { kcal: 121, carbs: 9.9, protein: 11.9, fat: 5.2 },
+  okra: { kcal: 33, carbs: 7, protein: 2, fat: 0.2 },
+  avocado: { kcal: 160, carbs: 9, protein: 2, fat: 15 },
+  "zucca butternut": { kcal: 45, carbs: 12, protein: 1, fat: 0.1 },
+  "peperone piccante": { kcal: 40, carbs: 9, protein: 2, fat: 0.4 },
+  "carote viola": { kcal: 41, carbs: 10, protein: 0.9, fat: 0.2 },
+  "pomodori verdi": { kcal: 23, carbs: 5.1, protein: 1.2, fat: 0.2 },
+  "germogli di lenticchie": { kcal: 106, carbs: 17, protein: 9, fat: 0.5 },
+  "germogli di fagiolo mung": { kcal: 30, carbs: 6, protein: 3, fat: 0.2 },
+  "germogli di alfa-alfa": { kcal: 23, carbs: 2.1, protein: 4, fat: 0.7 },
 };
 
 export const frutta_fresca = {
@@ -1880,12 +2002,6 @@ export const frutta_fresca = {
     fat: 0.2,
   },
 
-  avocado: {
-    kcal: 160,
-    carbs: 9.0,
-    protein: 2.0,
-    fat: 15.0,
-  },
   melagrana: {
     kcal: 83,
     carbs: 19.0,
@@ -1943,14 +2059,96 @@ export const frutta_fresca = {
     protein: 0.8,
     fat: 0.4,
   },
+  guava: { kcal: 68, carbs: 14, protein: 2.6, fat: 1 },
+  "maracuja (frutto della passione)": {
+    kcal: 97,
+    carbs: 23,
+    protein: 2.2,
+    fat: 0.7,
+  },
+  durian: { kcal: 147, carbs: 27, protein: 1.5, fat: 5.3 },
+  rambutan: { kcal: 68, carbs: 16, protein: 0.9, fat: 0.2 },
+  tamarindo: { kcal: 239, carbs: 63, protein: 2.8, fat: 0.6 },
+  carambola: { kcal: 31, carbs: 6.7, protein: 1, fat: 0.3 },
+  jackfruit: { kcal: 95, carbs: 23, protein: 1.7, fat: 0.6 },
+  mangostano: { kcal: 73, carbs: 18, protein: 0.4, fat: 0.6 },
+  "pitaya (dragon fruit)": { kcal: 50, carbs: 11, protein: 1.1, fat: 0.4 },
+  sapote: { kcal: 124, carbs: 32, protein: 2, fat: 1 },
+  feijoa: { kcal: 55, carbs: 13, protein: 0.7, fat: 0.4 },
+  longan: { kcal: 60, carbs: 15, protein: 1.3, fat: 0.1 },
+  nespola: { kcal: 47, carbs: 12, protein: 0.4, fat: 0.2 },
+  "nespola giapponese": { kcal: 47, carbs: 12, protein: 0.4, fat: 0.2 },
+  sorbe: { kcal: 75, carbs: 19, protein: 0.4, fat: 0.2 },
+  corniole: { kcal: 45, carbs: 10, protein: 1, fat: 0.4 },
+  "mirtilli rossi (cranberries)": {
+    kcal: 46,
+    carbs: 12,
+    protein: 0.4,
+    fat: 0.1,
+  },
+  "ribes rosso": { kcal: 56, carbs: 13.8, protein: 1.4, fat: 0.2 },
+  "ribes nero": { kcal: 63, carbs: 15, protein: 1.4, fat: 0.4 },
+  "uva spina": { kcal: 44, carbs: 10, protein: 0.9, fat: 0.6 },
+  "melone cantalupo": { kcal: 34, carbs: 8, protein: 0.8, fat: 0.2 },
+  "melone giallo": { kcal: 50, carbs: 12, protein: 1, fat: 0.2 },
+  "melone retato": { kcal: 34, carbs: 8, protein: 0.8, fat: 0.2 },
+  "mela pink lady": { kcal: 52, carbs: 14, protein: 0.3, fat: 0.2 },
+  "mela red delicious": { kcal: 59, carbs: 14, protein: 0.3, fat: 0.2 },
+  "pera conference": { kcal: 57, carbs: 15, protein: 0.4, fat: 0.1 },
+  "uva fragola": { kcal: 70, carbs: 18, protein: 0.7, fat: 0.2 },
+  "uva sultanina fresca": { kcal: 72, carbs: 19, protein: 0.7, fat: 0.2 },
+  "mandorla fresca": { kcal: 60, carbs: 5, protein: 2, fat: 4 },
+  "noci fresche (non secche)": { kcal: 120, carbs: 3, protein: 3, fat: 11 },
+  giuggiole: { kcal: 79, carbs: 20, protein: 1.2, fat: 0.2 },
+  bergamotto: { kcal: 36, carbs: 8, protein: 1, fat: 0.2 },
+  kumquat: { kcal: 71, carbs: 16, protein: 1.9, fat: 0.9 },
+  cedro: { kcal: 11, carbs: 3, protein: 0.6, fat: 0.1 },
+  cherimoya: { kcal: 75, carbs: 18, protein: 1.6, fat: 0.7 },
+  sapodilla: { kcal: 83, carbs: 20, protein: 0.4, fat: 0.4 },
+  "breadfruit (frutto del pane)": {
+    kcal: 103,
+    carbs: 27,
+    protein: 1.1,
+    fat: 0.2,
+  },
 };
 
 export const dolci_creme = {
   zucchero: {
     kcal: 400,
-    carbs: 100.0,
-    protein: 0.0,
-    fat: 0.0,
+    carbs: 100,
+    protein: 0,
+    fat: 0,
+  },
+  "zucchero semolato": {
+    kcal: 400,
+    carbs: 100,
+    protein: 0,
+    fat: 0,
+  },
+  "zucchero a velo": {
+    kcal: 400,
+    carbs: 100,
+    protein: 0,
+    fat: 0,
+  },
+  "zucchero di canna": {
+    kcal: 380,
+    carbs: 98,
+    protein: 0,
+    fat: 0,
+  },
+  "zucchero di canna grezzo": {
+    kcal: 380,
+    carbs: 98,
+    protein: 0,
+    fat: 0,
+  },
+  "zucchero di cocco": {
+    kcal: 380,
+    carbs: 92,
+    protein: 1,
+    fat: 0,
   },
   miele: {
     kcal: 304,
@@ -2035,12 +2233,6 @@ export const dolci_creme = {
     fat: 0.0,
   },
 
-  caramello: {
-    kcal: 382,
-    carbs: 97.0,
-    protein: 0.0,
-    fat: 0.0,
-  },
   "dulce de leche": {
     kcal: 315,
     carbs: 55.0,
@@ -2194,12 +2386,6 @@ export const oli_grassi = {
     fat: 100.0,
   },
 
-  burro: {
-    kcal: 717,
-    carbs: 0.1,
-    protein: 0.5,
-    fat: 81.0,
-  },
   "burro chiarificato (ghee)": {
     kcal: 900,
     carbs: 0.0,
@@ -2234,12 +2420,6 @@ export const salse_base = {
     protein: 1.3,
     fat: 0.1,
   },
-  maionese: {
-    kcal: 680,
-    carbs: 1.0,
-    protein: 1.0,
-    fat: 75.0,
-  },
   "maionese light": {
     kcal: 260,
     carbs: 6.0,
@@ -2270,12 +2450,7 @@ export const salse_base = {
     protein: 1.0,
     fat: 42.0,
   },
-  "salsa yogurt": {
-    kcal: 80,
-    carbs: 6.0,
-    protein: 3.0,
-    fat: 5.0,
-  },
+
   "salsa tonnata": {
     kcal: 270,
     carbs: 3.0,
@@ -2607,12 +2782,6 @@ export const salse_dolci = {
     protein: 1.0,
     fat: 20.0,
   },
-  "topping al caramello": {
-    kcal: 310,
-    carbs: 78.0,
-    protein: 0.0,
-    fat: 0.0,
-  },
 
   "topping al cioccolato": {
     kcal: 280,
@@ -2690,12 +2859,6 @@ export const salse_dolci = {
     fat: 31.0,
   },
 
-  miele: {
-    kcal: 304,
-    carbs: 82.0,
-    protein: 0.3,
-    fat: 0.0,
-  },
   melassa: {
     kcal: 290,
     carbs: 74.0,
@@ -2826,12 +2989,6 @@ export const salse_da_insalata = {
     protein: 2.0,
     fat: 44.0,
   },
-  "ranch light": {
-    kcal: 190,
-    carbs: 5.0,
-    protein: 2.0,
-    fat: 15.0,
-  },
 
   "salsa balsamica cremosa": {
     kcal: 140,
@@ -2866,6 +3023,10 @@ export const salse_da_insalata = {
     protein: 3.0,
     fat: 3.0,
   },
+  tabasco: { kcal: 12, carbs: 3, protein: 0.3, fat: 0.1 },
+  "salsa worcester": { kcal: 78, carbs: 19, protein: 0.5, fat: 0 },
+  "salsa di pesce (fish sauce)": { kcal: 35, carbs: 4, protein: 5, fat: 0 },
+  chimichurri: { kcal: 200, carbs: 2, protein: 1, fat: 20 },
 };
 
 export const salse_fast_food = {
@@ -2893,12 +3054,7 @@ export const salse_fast_food = {
     protein: 2.0,
     fat: 15.0,
   },
-  "honey mustard": {
-    kcal: 260,
-    carbs: 30.0,
-    protein: 1.0,
-    fat: 14.0,
-  },
+
   "mustard bbq": {
     kcal: 180,
     carbs: 25.0,
@@ -3010,37 +3166,6 @@ export const salse_fast_food = {
 };
 
 export const extra_completo = {
-  // ALGHE & SUPERFOOD
-  "alga nori": {
-    kcal: 35,
-    carbs: 5.0,
-    protein: 5.8,
-    fat: 0.3,
-  },
-  "alga wakame": {
-    kcal: 45,
-    carbs: 9.0,
-    protein: 3.0,
-    fat: 0.6,
-  },
-  "alga kombu": {
-    kcal: 43,
-    carbs: 9.6,
-    protein: 1.7,
-    fat: 0.6,
-  },
-  spirulina: {
-    kcal: 290,
-    carbs: 24.0,
-    protein: 57.0,
-    fat: 8.0,
-  },
-  clorella: {
-    kcal: 410,
-    carbs: 23.0,
-    protein: 58.0,
-    fat: 12.0,
-  },
   "erba di grano": {
     kcal: 214,
     carbs: 30.0,
@@ -3064,12 +3189,6 @@ export const extra_completo = {
     carbs: 77.0,
     protein: 14.0,
     fat: 1.0,
-  },
-  "semi di canapa": {
-    kcal: 553,
-    carbs: 9.0,
-    protein: 32.0,
-    fat: 49.0,
   },
   "maca in polvere": {
     kcal: 325,
@@ -3114,12 +3233,6 @@ export const extra_completo = {
     carbs: 3.0,
     protein: 0.0,
     fat: 0.0,
-  },
-  tempeh: {
-    kcal: 193,
-    carbs: 9.0,
-    protein: 20.0,
-    fat: 11.0,
   },
 
   // ALTERNATIVE VEGANE AI FORMAGGI
@@ -3179,14 +3292,6 @@ export const extra_completo = {
     protein: 0.2,
     fat: 0.0,
   },
-
-  // PRODOTTI FITNESS
-  skyr: {
-    kcal: 63,
-    carbs: 4.0,
-    protein: 11.0,
-    fat: 0.2,
-  },
   "yogurt greco proteico": {
     kcal: 59,
     carbs: 3.6,
@@ -3237,42 +3342,7 @@ export const extra_completo = {
     protein: 80.0,
     fat: 7.0,
   },
-  "proteine isolate whey": {
-    kcal: 370,
-    carbs: 5.0,
-    protein: 85.0,
-    fat: 3.0,
-  },
-  "proteine caseine": {
-    kcal: 350,
-    carbs: 10.0,
-    protein: 75.0,
-    fat: 3.0,
-  },
-  "proteine vegane mix": {
-    kcal: 380,
-    carbs: 8.0,
-    protein: 75.0,
-    fat: 5.0,
-  },
-  "proteine di pisello": {
-    kcal: 370,
-    carbs: 6.0,
-    protein: 80.0,
-    fat: 5.0,
-  },
-  "proteine di riso": {
-    kcal: 370,
-    carbs: 7.0,
-    protein: 78.0,
-    fat: 4.0,
-  },
-  "proteine di soia": {
-    kcal: 360,
-    carbs: 7.0,
-    protein: 80.0,
-    fat: 4.0,
-  },
+
   "creatina monoidrato": {
     kcal: 0,
     carbs: 0.0,
@@ -3363,12 +3433,6 @@ export const extra_veg_fitness = {
     protein: 25.0,
     fat: 2.0,
   },
-  edamame: {
-    kcal: 121,
-    carbs: 9.9,
-    protein: 11.9,
-    fat: 5.2,
-  },
   "burger vegetale": {
     kcal: 190,
     carbs: 10.0,
@@ -3413,18 +3477,7 @@ export const extra_veg_fitness = {
     protein: 0.0,
     fat: 0.0,
   },
-  destrosio: {
-    kcal: 370,
-    carbs: 92.0,
-    protein: 0.0,
-    fat: 0.0,
-  },
-  maltodestrine: {
-    kcal: 380,
-    carbs: 95.0,
-    protein: 0.0,
-    fat: 0.0,
-  },
+
   "sciroppo d'agave": {
     kcal: 310,
     carbs: 76.0,
@@ -3432,13 +3485,6 @@ export const extra_veg_fitness = {
     fat: 0.0,
   },
 
-  // Polveri proteiche
-  "proteine whey": {
-    kcal: 400,
-    carbs: 10.0,
-    protein: 80.0,
-    fat: 7.0,
-  },
   "proteine isolate whey": {
     kcal: 370,
     carbs: 5.0,
@@ -3483,24 +3529,7 @@ export const extra_veg_fitness = {
     protein: 11.0,
     fat: 4.0,
   },
-  "yogurt greco 0%": {
-    kcal: 59,
-    carbs: 3.6,
-    protein: 10.0,
-    fat: 0.2,
-  },
-  "barretta proteica": {
-    kcal: 350,
-    carbs: 30.0,
-    protein: 25.0,
-    fat: 12.0,
-  },
-  "pancake proteico": {
-    kcal: 250,
-    carbs: 20.0,
-    protein: 20.0,
-    fat: 8.0,
-  },
+
   "burro di arachidi": {
     kcal: 588,
     carbs: 20.0,
@@ -3512,12 +3541,6 @@ export const extra_veg_fitness = {
     carbs: 19.0,
     protein: 21.0,
     fat: 55.0,
-  },
-  "crema proteica": {
-    kcal: 450,
-    carbs: 40.0,
-    protein: 20.0,
-    fat: 25.0,
   },
 
   // Altri alimenti vegani
@@ -3863,14 +3886,204 @@ export const frutta_secca_semi = {
     protein: 15.0,
     fat: 40.0,
   },
+  "noci di pecan tostate": { kcal: 710, carbs: 14, protein: 9, fat: 74 },
+  "noci macadamia tostate": { kcal: 740, carbs: 14, protein: 8, fat: 78 },
+  "mandorle pelate": { kcal: 575, carbs: 21, protein: 21, fat: 50 },
+  "mandorle tostate": { kcal: 598, carbs: 22, protein: 21, fat: 52 },
+  "nocciole tostate": { kcal: 646, carbs: 17, protein: 15, fat: 63 },
+  "pistacchi tostati salati": { kcal: 575, carbs: 28, protein: 20, fat: 46 },
+  "noci nere (black walnuts)": { kcal: 619, carbs: 9, protein: 24, fat: 59 },
+  "noci di cola": { kcal: 150, carbs: 36, protein: 2, fat: 0.2 },
+  "noci di betel": { kcal: 340, carbs: 45, protein: 5, fat: 15 },
+  "semi di canapa": { kcal: 553, carbs: 9, protein: 32, fat: 49 },
+  "semi di quinoa soffiata": { kcal: 368, carbs: 64, protein: 14, fat: 6 },
+  "semi di amaranto soffiato": { kcal: 371, carbs: 65, protein: 14, fat: 7 },
+  "semi di zucca tostati": { kcal: 574, carbs: 12, protein: 30, fat: 49 },
+  "semi di girasole tostati": { kcal: 620, carbs: 20, protein: 21, fat: 55 },
+  "fragole essiccate": { kcal: 324, carbs: 76, protein: 2.5, fat: 1 },
+  "lamponi essiccati": { kcal: 360, carbs: 84, protein: 3, fat: 1.5 },
+  "mirtilli essiccati non zuccherati": {
+    kcal: 308,
+    carbs: 82,
+    protein: 0.1,
+    fat: 1.4,
+  },
+  "ciliegie essiccate": { kcal: 333, carbs: 82, protein: 1.2, fat: 0.7 },
+  "ananas essiccato": { kcal: 360, carbs: 90, protein: 2, fat: 0.5 },
+  "mango essiccato": { kcal: 319, carbs: 79, protein: 2.5, fat: 1.2 },
+  "papaya essiccata": { kcal: 327, carbs: 82, protein: 1.6, fat: 0.6 },
+  "kiwi essiccato": { kcal: 360, carbs: 87, protein: 3.8, fat: 1.2 },
+  "chips di mela": { kcal: 350, carbs: 80, protein: 2, fat: 1 },
+  "chips di pera": { kcal: 360, carbs: 82, protein: 2, fat: 1 },
+  "chips di cocco": { kcal: 650, carbs: 24, protein: 7, fat: 64 },
+  "chips di banana": { kcal: 519, carbs: 58, protein: 2.3, fat: 34 },
+  "cocco grattugiato": { kcal: 660, carbs: 24, protein: 7, fat: 64 },
+  "cocco tostato": { kcal: 670, carbs: 25, protein: 7, fat: 65 },
+  "cocco in scaglie": { kcal: 650, carbs: 23, protein: 7, fat: 63 },
+  "granola semplice": { kcal: 471, carbs: 64, protein: 10, fat: 20 },
+  "granola con frutta secca": { kcal: 520, carbs: 55, protein: 12, fat: 30 },
 };
 
 export const base_essentials = {
-  "uovo intero": { kcal: 128, carbs: 0.7, protein: 12.4, fat: 8.7 },
-  albume: { kcal: 43, carbs: 0.7, protein: 10.5, fat: 0.2 },
-  tuorlo: { kcal: 322, carbs: 3.6, protein: 15.9, fat: 27.5 },
+  uova: { kcal: 128, carbs: 0.7, protein: 12.4, fat: 8.7 },
+  albumi: { kcal: 43, carbs: 0.7, protein: 10.5, fat: 0.2 },
+  tuorli: { kcal: 322, carbs: 3.6, protein: 15.9, fat: 27.5 },
 
   // Carne e pesce
+};
+
+export const liquidi_cucina = {
+  "brodo vegetale": { kcal: 7, carbs: 1, protein: 0.5, fat: 0.1 },
+  "brodo di carne": { kcal: 15, carbs: 1, protein: 2, fat: 0.5 },
+  "brodo di pollo": { kcal: 13, carbs: 1, protein: 1.5, fat: 0.4 },
+  "vino bianco": { kcal: 82, carbs: 2.6, protein: 0.1, fat: 0 },
+  "vino rosso": { kcal: 85, carbs: 2.6, protein: 0.1, fat: 0 },
+  "aceto di vino": { kcal: 21, carbs: 0.9, protein: 0, fat: 0 },
+  "aceto balsamico": { kcal: 88, carbs: 17, protein: 0.5, fat: 0 },
+};
+
+export const sali = {
+  "sale fino": { kcal: 0, carbs: 0, protein: 0, fat: 0 },
+  "sale grosso": { kcal: 0, carbs: 0, protein: 0, fat: 0 },
+  "sale marino integrale": { kcal: 0, carbs: 0, protein: 0, fat: 0 },
+  "sale rosa dell'Himalaya": { kcal: 0, carbs: 0, protein: 0, fat: 0 },
+  "sale kosher": { kcal: 0, carbs: 0, protein: 0, fat: 0 },
+  "sale affumicato": { kcal: 0, carbs: 0, protein: 0, fat: 0 },
+  "sale iodato": { kcal: 0, carbs: 0, protein: 0, fat: 0 },
+};
+
+export const addensanti = {
+  "gelatina in fogli": { kcal: 335, carbs: 0, protein: 85, fat: 0 },
+  "gelatina in polvere": { kcal: 335, carbs: 0, protein: 85, fat: 0 },
+  "agar agar": { kcal: 26, carbs: 7, protein: 0.5, fat: 0 },
+  pectina: { kcal: 136, carbs: 90, protein: 0, fat: 0 },
+  "amido di mais (maizena)": { kcal: 381, carbs: 91, protein: 0.3, fat: 0.1 },
+  "fecola di patate": { kcal: 357, carbs: 88, protein: 0.1, fat: 0.1 },
+  "gomma di guar": { kcal: 333, carbs: 80, protein: 5, fat: 0.5 },
+  "gomma xantana": { kcal: 333, carbs: 78, protein: 7, fat: 0.5 },
+};
+
+export const aromi = {
+  "aroma vaniglia": { kcal: 12, carbs: 0.5, protein: 0, fat: 0 },
+  "aroma mandorla": { kcal: 10, carbs: 0.4, protein: 0, fat: 0 },
+  "aroma fiori d'arancio": { kcal: 8, carbs: 0.3, protein: 0, fat: 0 },
+  "aroma limone": { kcal: 9, carbs: 0.4, protein: 0, fat: 0 },
+  "aroma rum": { kcal: 15, carbs: 1, protein: 0, fat: 0 },
+  "aroma burro": { kcal: 20, carbs: 0.5, protein: 0, fat: 0.1 },
+  "aroma nocciola": { kcal: 18, carbs: 0.6, protein: 0, fat: 0.1 },
+};
+
+export const estratti = {
+  "estratto di vaniglia": { kcal: 288, carbs: 13, protein: 0, fat: 0 },
+  "estratto di mandorla": { kcal: 280, carbs: 12, protein: 0, fat: 0 },
+  "estratto di malto": { kcal: 318, carbs: 79, protein: 5, fat: 0.5 },
+  vanillina: { kcal: 288, carbs: 12, protein: 0, fat: 0 },
+  "estratto di limone": { kcal: 250, carbs: 10, protein: 0, fat: 0 },
+};
+
+export const bevande = {
+  acqua: { kcal: 0, carbs: 0, protein: 0, fat: 0 },
+  "tè verde": { kcal: 1, carbs: 0, protein: 0, fat: 0 },
+  "tè nero": { kcal: 1, carbs: 0, protein: 0, fat: 0 },
+  "caffè espresso": { kcal: 2, carbs: 0, protein: 0.1, fat: 0 },
+  "caffè americano": { kcal: 1, carbs: 0, protein: 0, fat: 0 },
+  "succo d'arancia": { kcal: 45, carbs: 10, protein: 0.7, fat: 0.2 },
+  cola: { kcal: 42, carbs: 10.6, protein: 0, fat: 0 },
+  "energy drink": { kcal: 45, carbs: 11, protein: 0, fat: 0 },
+  tonica: { kcal: 34, carbs: 8.9, protein: 0, fat: 0 },
+};
+
+export const spezie_secche = {
+  "paprika dolce": { kcal: 282, carbs: 54, protein: 14, fat: 13 },
+  "paprika affumicata": { kcal: 282, carbs: 54, protein: 14, fat: 13 },
+  curcuma: { kcal: 354, carbs: 65, protein: 8, fat: 10 },
+  "zenzero in polvere": { kcal: 335, carbs: 71, protein: 9, fat: 4 },
+  cannella: { kcal: 247, carbs: 81, protein: 4, fat: 1.2 },
+  "noce moscata": { kcal: 525, carbs: 49, protein: 6, fat: 36 },
+  "chiodi di garofano": { kcal: 323, carbs: 61, protein: 6, fat: 20 },
+  "cumino in polvere": { kcal: 375, carbs: 44, protein: 18, fat: 22 },
+  "coriandolo in polvere": { kcal: 298, carbs: 55, protein: 12, fat: 18 },
+  "aglio in polvere": { kcal: 331, carbs: 73, protein: 17, fat: 0.7 },
+  "cipolla in polvere": { kcal: 341, carbs: 79, protein: 10, fat: 1 },
+  "peperoncino in polvere": { kcal: 282, carbs: 50, protein: 12, fat: 14 },
+  "semi di cumino": { kcal: 375, carbs: 44, protein: 18, fat: 22 },
+  "semi di coriandolo": { kcal: 298, carbs: 55, protein: 12, fat: 18 },
+  "semi di finocchio": { kcal: 345, carbs: 52, protein: 16, fat: 14 },
+  "semi di anice": { kcal: 337, carbs: 50, protein: 18, fat: 15 },
+  "semi di senape": { kcal: 508, carbs: 28, protein: 26, fat: 36 },
+  cardamomo: { kcal: 311, carbs: 68, protein: 11, fat: 7 },
+  "pepe nero": { kcal: 255, carbs: 64, protein: 10, fat: 3.3 },
+  "pepe rosa": { kcal: 345, carbs: 75, protein: 10, fat: 5 },
+  "pepe verde": { kcal: 251, carbs: 50, protein: 10, fat: 3 },
+  curry: { kcal: 325, carbs: 58, protein: 14, fat: 14 },
+  "garam masala": { kcal: 350, carbs: 60, protein: 15, fat: 15 },
+  "za'atar": { kcal: 306, carbs: 41, protein: 10, fat: 14 },
+  "ras el hanout": { kcal: 280, carbs: 50, protein: 12, fat: 10 },
+  "tandoori masala": { kcal: 300, carbs: 55, protein: 12, fat: 10 },
+  "anice stellato": { kcal: 337, carbs: 50, protein: 18, fat: 15 },
+  macis: { kcal: 475, carbs: 50, protein: 6, fat: 32 },
+  "pimento (allspice)": { kcal: 263, carbs: 72, protein: 6, fat: 8 },
+  "zenzero candito": { kcal: 333, carbs: 83, protein: 0.3, fat: 0.3 },
+};
+
+export const erbe_aromatiche_fresche = {
+  "basilico fresco": { kcal: 23, carbs: 2.7, protein: 3.2, fat: 0.6 },
+  "prezzemolo fresco": { kcal: 36, carbs: 6.3, protein: 3.0, fat: 0.8 },
+  "erba cipollina": { kcal: 30, carbs: 4.4, protein: 3.3, fat: 0.7 },
+  "menta fresca": { kcal: 44, carbs: 8, protein: 3.8, fat: 0.7 },
+  "rosmarino fresco": { kcal: 131, carbs: 21, protein: 3.3, fat: 5.9 },
+  "timo fresco": { kcal: 101, carbs: 24, protein: 5.6, fat: 1.7 },
+  "origano fresco": { kcal: 265, carbs: 69, protein: 9, fat: 4.3 },
+  "salvia fresca": { kcal: 315, carbs: 60, protein: 11, fat: 13 },
+  "dragoncello fresco": { kcal: 295, carbs: 50, protein: 22, fat: 7 },
+  "alloro fresco": { kcal: 313, carbs: 75, protein: 8, fat: 8.4 },
+};
+
+export const erbe_aromatiche_secche = {
+  "origano secco": { kcal: 306, carbs: 64, protein: 11, fat: 10 },
+  "timo secco": { kcal: 276, carbs: 63, protein: 9, fat: 7 },
+  "rosmarino secco": { kcal: 331, carbs: 64, protein: 4.9, fat: 15 },
+  "salvia secca": { kcal: 315, carbs: 60, protein: 11, fat: 13 },
+  "basilico secco": { kcal: 233, carbs: 48, protein: 23, fat: 4 },
+  "prezzemolo secco": { kcal: 292, carbs: 50, protein: 26, fat: 5 },
+  "dragoncello secco": { kcal: 295, carbs: 50, protein: 22, fat: 7 },
+};
+
+export const additivi = {
+  "bicarbonato di sodio": { kcal: 0, carbs: 0, protein: 0, fat: 0 },
+  "cremor tartaro": { kcal: 0, carbs: 0, protein: 0, fat: 0 },
+  "lievito chimico (baking powder)": {
+    kcal: 53,
+    carbs: 28,
+    protein: 0,
+    fat: 0,
+  },
+  "lievito di birra secco": { kcal: 325, carbs: 41, protein: 40, fat: 8 },
+  "lievito di birra fresco": { kcal: 105, carbs: 14, protein: 8, fat: 2 },
+  "lecitina di soia": { kcal: 700, carbs: 20, protein: 0, fat: 70 },
+  "mono e digliceridi degli acidi grassi": {
+    kcal: 900,
+    carbs: 0,
+    protein: 0,
+    fat: 100,
+  },
+  "polysorbate 80": { kcal: 760, carbs: 0, protein: 0, fat: 84 },
+  "carbossimetilcellulosa (CMC)": { kcal: 200, carbs: 50, protein: 0, fat: 0 },
+  "gelatina spray (spray gel)": { kcal: 150, carbs: 37, protein: 0, fat: 0 },
+  carragenina: { kcal: 33, carbs: 7, protein: 1, fat: 0 },
+  "farina di semi di carrube": { kcal: 222, carbs: 88, protein: 5, fat: 1 },
+  "acido citrico": { kcal: 0, carbs: 0, protein: 0, fat: 0 },
+  "acido ascorbico (vitamina C)": { kcal: 0, carbs: 0, protein: 0, fat: 0 },
+  "acido lattico": { kcal: 15, carbs: 3, protein: 0, fat: 0 },
+  "acido malico": { kcal: 0, carbs: 0, protein: 0, fat: 0 },
+  destrosio: { kcal: 365, carbs: 91, protein: 0, fat: 0 },
+  maltodestrine: { kcal: 380, carbs: 95, protein: 0, fat: 0 },
+  inulina: { kcal: 210, carbs: 8, protein: 0, fat: 0 },
+  "neutro per gelato": { kcal: 310, carbs: 75, protein: 2, fat: 1 },
+  "latte in polvere scremato": { kcal: 360, carbs: 52, protein: 36, fat: 1 },
+  "glutine di frumento": { kcal: 370, carbs: 13, protein: 75, fat: 1 },
+  "enzimi panificatori": { kcal: 0, carbs: 0, protein: 0, fat: 0 },
+  "acido sorbico": { kcal: 0, carbs: 0, protein: 0, fat: 0 },
 };
 
 export const nutritionDB = {
@@ -3893,6 +4106,16 @@ export const nutritionDB = {
   salse_dolci,
   salse_fast_food,
   base_essentials,
+  liquidi_cucina,
+  sali,
+  addensanti,
+  aromi,
+  estratti,
+  bevande,
+  spezie_secche,
+  erbe_aromatiche_fresche,
+  erbe_aromatiche_secche,
+  additivi,
 };
 
 export type FoodItem = {

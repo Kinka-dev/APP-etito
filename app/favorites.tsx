@@ -5,7 +5,7 @@ import { COLORS } from "@/constants/colors";
 import { useRecipeContext } from "@/context/RecipeContext";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { FlatList, ImageBackground, StyleSheet, View } from "react-native";
+import { FlatList, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function FavoritesScreen() {
@@ -14,48 +14,42 @@ export default function FavoritesScreen() {
   const favoriteRecipes = recipes.filter((r) => r.isFavorite === true);
 
   return (
-    <ImageBackground
-      source={require("../assets/images/sfondo.png")}
-      style={styles.bg}
-      resizeMode="cover"
-    >
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          {/* <Image
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        {/* <Image
             source={require("../../assets/images/preferiti.png")}
             style={styles.icon}
             resizeMode="contain"
           /> */}
-          <Text bold style={styles.title}>
-            Preferiti
+        <Text bold style={styles.title}>
+          Preferiti
+        </Text>
+      </View>
+
+      {favoriteRecipes.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="heart-outline" size={80} color="#ccc" />
+          <Text style={styles.emptyText}>
+            Non hai ancora nessuna ricetta preferita
+          </Text>
+          <Text style={styles.emptySubtext}>
+            Clicca sul cuore nelle ricette per aggiungerle qui
           </Text>
         </View>
-
-        {favoriteRecipes.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="heart-outline" size={80} color="#ccc" />
-            <Text style={styles.emptyText}>
-              Non hai ancora nessuna ricetta preferita
-            </Text>
-            <Text style={styles.emptySubtext}>
-              Clicca sul cuore nelle ricette per aggiungerle qui
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            data={favoriteRecipes}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <RecipeCard
-                recipe={item}
-                onPress={() => router.push(`/recipe/${item.id}` as any)}
-              />
-            )}
-            contentContainerStyle={styles.list}
-          />
-        )}
-      </SafeAreaView>
-    </ImageBackground>
+      ) : (
+        <FlatList
+          data={favoriteRecipes}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <RecipeCard
+              recipe={item}
+              onPress={() => router.push(`/recipe/${item.id}` as any)}
+            />
+          )}
+          contentContainerStyle={styles.list}
+        />
+      )}
+    </SafeAreaView>
   );
 }
 
@@ -63,7 +57,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: 50,
-    // backgroundColor: "#fffaf0",
+    backgroundColor: "#ffffff",
   },
 
   header: {
@@ -92,13 +86,16 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: COLORS.textLight,
     marginTop: 20,
+    marginHorizontal: 30,
     textAlign: "center",
+    lineHeight: 30,
   },
   emptySubtext: {
     fontSize: 16,
     color: COLORS.textLight,
     textAlign: "center",
     marginTop: 8,
+    marginHorizontal: 20,
   },
   list: {
     padding: 16,

@@ -49,12 +49,17 @@ export function IngredientsModal({
   );
 
   const startHold = (callback: () => void) => {
-    callback(); // esegue subito
-    holdInterval = setInterval(callback, 120); // ripete velocemente
+    // Primo incremento dopo un piccolo ritardo
+    holdInterval = setTimeout(() => {
+      holdInterval = setInterval(callback, 80);
+    }, 250);
   };
 
   const stopHold = () => {
-    if (holdInterval) clearInterval(holdInterval);
+    if (holdInterval) {
+      clearTimeout(holdInterval);
+      clearInterval(holdInterval);
+    }
     holdInterval = null;
   };
 
@@ -87,48 +92,58 @@ export function IngredientsModal({
                 {/* NOME */}
                 <Text style={{ marginLeft: 8, flex: 1 }}>{ing.name}</Text>
 
-                {/* QUANTITÀ + / - */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  {/* DECREMENTO */}
-                  <TouchableOpacity
-                    onPressIn={() =>
-                      startHold(() => {
-                        const arr = [...selected];
-                        const current = Number(arr[i].quantity) || 0;
-                        arr[i].quantity = Math.max(0, current - 1);
-                        setSelected(arr);
-                      })
-                    }
-                    onPressOut={stopHold}
-                    style={modalStyles.btn}
-                  >
-                    <Text style={modalStyles.btnText}>−</Text>
-                  </TouchableOpacity>
-
+                <View style={modalStyles.qtyColumn}>
                   {/* QUANTITÀ */}
                   <Text style={modalStyles.qtyText}>{ing.quantity}</Text>
 
-                  {/* INCREMENTO */}
-                  <TouchableOpacity
-                    onPressIn={() =>
-                      startHold(() => {
+                  {/* BOTTONI VERTICALI */}
+                  <View style={modalStyles.verticalButtons}>
+                    {/* + */}
+                    <TouchableOpacity
+                      onPress={() => {
                         const arr = [...selected];
-                        const current = Number(arr[i].quantity) || 0;
-                        arr[i].quantity = current + 1;
+                        arr[i].quantity = Number(arr[i].quantity) + 1;
                         setSelected(arr);
-                      })
-                    }
-                    onPressOut={stopHold}
-                    style={modalStyles.btn}
-                  >
-                    <Text style={modalStyles.btnText}>+</Text>
-                  </TouchableOpacity>
+                      }}
+                      onPressIn={() =>
+                        startHold(() => {
+                          const arr = [...selected];
+                          arr[i].quantity = Number(arr[i].quantity) + 1;
+                          setSelected(arr);
+                        })
+                      }
+                      onPressOut={stopHold}
+                      style={modalStyles.btnSmall}
+                    >
+                      <Text style={modalStyles.btnText}>+</Text>
+                    </TouchableOpacity>
+
+                    {/* - */}
+                    <TouchableOpacity
+                      onPress={() => {
+                        const arr = [...selected];
+                        arr[i].quantity = Math.max(
+                          0,
+                          Number(arr[i].quantity) - 1,
+                        ); // ⭐ TAP = -1
+                        setSelected(arr);
+                      }}
+                      onPressIn={() =>
+                        startHold(() => {
+                          const arr = [...selected];
+                          arr[i].quantity = Math.max(
+                            0,
+                            Number(arr[i].quantity) - 1,
+                          ); // ⭐ HOLD = -1 ma velocissimo
+                          setSelected(arr);
+                        })
+                      }
+                      onPressOut={stopHold}
+                      style={modalStyles.btnSmall}
+                    >
+                      <Text style={modalStyles.btnText}>−</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 {/* UNITÀ (SOLO TESTO) */}
@@ -145,7 +160,9 @@ export function IngredientsModal({
 
             <TouchableOpacity
               onPress={() => {
-                onConfirm(selected.filter((i) => i.checked));
+                onConfirm(
+                  selected.filter((i) => i.checked && Number(i.quantity) > 0),
+                );
                 onClose();
               }}
             >
@@ -172,23 +189,23 @@ const modalStyles = StyleSheet.create({
   },
   title: {
     fontSize: 18,
-    marginBottom: 12,
+    marginBottom: 20,
     textAlign: "center",
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 15,
   },
   btn: {
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 2,
     backgroundColor: "#eee",
     borderRadius: 6,
   },
   btnText: {
     fontSize: 18,
-    fontWeight: "600",
+    color: "white",
   },
   qtyText: {
     width: 32,
@@ -196,15 +213,32 @@ const modalStyles = StyleSheet.create({
     fontSize: 16,
   },
   unitText: {
-    marginLeft: 6,
-    width: 30,
-    textAlign: "center",
+    width: 50,
+    textAlign: "left",
     fontSize: 14,
   },
   buttons: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 16,
+    marginTop: 20,
+  },
+  qtyColumn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    width: 110,
+  },
+
+  verticalButtons: {
+    flexDirection: "row",
+    gap: 4,
+  },
+
+  btnSmall: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: COLORS.primary,
+    borderRadius: 20,
   },
 });
 
@@ -239,6 +273,18 @@ export default function RecipeCard({ recipe, onPress }: RecipeCardProps) {
         onPress={onPress}
         activeOpacity={0.9}
       >
+        {/* CATEGORY PILL VERTICALE NELLA PARTE BASSA */}
+        <View
+          style={[
+            styles.categoryPillVertical,
+            { top: (recipe.tags ?? []).length > 0 ? "55%" : "65%" },
+          ]}
+        >
+          <Text bold style={styles.categoryPillVerticalText}>
+            {CATEGORY_LABELS[recipe.category]}
+          </Text>
+        </View>
+
         {/* ❤️ CUORE */}
         <TouchableOpacity
           style={styles.favoriteButton}
@@ -272,23 +318,57 @@ export default function RecipeCard({ recipe, onPress }: RecipeCardProps) {
             {recipe.title}
           </Text>
 
-          <Text bold style={styles.categoryText}>
+          {/* <Text bold style={styles.categoryText}>
             ••• {CATEGORY_LABELS[recipe.category]} •••
-          </Text>
+          </Text> */}
 
           <View style={styles.infoRow}>
             <View style={styles.infoItem}>
-              <Ionicons name="time-outline" size={14} color={COLORS.primary} />
-              <Text style={styles.infoText}>{recipe.prepTime} min</Text>
+              <View
+                style={{
+                  flexDirection: "column",
+                  alignItems: "center",
+                }}
+              >
+                <Ionicons
+                  name="time-outline"
+                  size={14}
+                  color={COLORS.primary}
+                />
+                <Text style={[styles.infoText, { marginBottom: -8 }]}>
+                  Preparazione:
+                </Text>
+                <Text style={styles.infoText}>{recipe.prepTime}</Text>
+              </View>
             </View>
 
             <View style={styles.infoItem}>
-              <Ionicons
-                name="people-outline"
-                size={14}
-                color={COLORS.primary}
-              />
-              <Text style={styles.infoText}>{recipe.servings} porz.</Text>
+              <View style={{ flexDirection: "column", alignItems: "center" }}>
+                <Ionicons
+                  name="people-outline"
+                  size={14}
+                  color={COLORS.primary}
+                />
+                <Text style={[styles.infoText, { marginBottom: -8 }]}>
+                  Porzioni:
+                </Text>
+                <Text style={styles.infoText}>{recipe.servings}</Text>
+              </View>
+            </View>
+
+            <View style={styles.infoItem}>
+              <View style={{ flexDirection: "column", alignItems: "center" }}>
+                <Ionicons
+                  name="flame-outline"
+                  size={14}
+                  color={COLORS.primary}
+                />
+
+                <Text style={[styles.infoText, { marginBottom: -8 }]}>
+                  Cottura:{" "}
+                </Text>
+                <Text style={styles.infoText}>{recipe.cookTime}</Text>
+              </View>
             </View>
           </View>
           <ScrollView
@@ -429,7 +509,7 @@ export default function RecipeCard({ recipe, onPress }: RecipeCardProps) {
               name: i.name,
               quantity: String(i.quantity ?? ""),
               unit: i.unit ?? "",
-              checked: false, // ⭐ necessario per rispettare il tipo Ingredient
+              checked: false,
             })),
           )
         }
@@ -488,6 +568,7 @@ const styles = StyleSheet.create({
   // 📄 CONTENUTO SOTTO L’IMMAGINE
   content: {
     padding: 14,
+    paddingLeft: 28,
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
@@ -508,15 +589,17 @@ const styles = StyleSheet.create({
 
   infoRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    alignItems: "flex-start",
+    justifyContent: "flex-start",
     marginTop: 6,
-    gap: 10,
+    gap: 25,
   },
 
   infoItem: {
     flexDirection: "row",
+    justifyContent: "flex-start",
     alignItems: "center",
-    gap: 4,
+    gap: 20,
   },
 
   infoText: {
@@ -537,7 +620,7 @@ const styles = StyleSheet.create({
   },
 
   tagText: {
-    fontSize: 11,
+    fontSize: 10,
     color: "white",
   },
 
@@ -586,5 +669,27 @@ const styles = StyleSheet.create({
     width: 1,
     height: 32,
     backgroundColor: "#eee",
+  },
+
+  categoryPillVertical: {
+    position: "absolute",
+    left: 0,
+    bottom: 0,
+    width: 28,
+    backgroundColor: "white",
+    justifyContent: "center",
+    alignItems: "center",
+    borderRightWidth: 1,
+    borderColor: COLORS.primary,
+    zIndex: 25,
+  },
+
+  categoryPillVerticalText: {
+    color: COLORS.primary,
+    fontSize: 10,
+    transform: [{ rotate: "-90deg" }],
+    width: 120,
+    textAlign: "center",
+    letterSpacing: 0.5,
   },
 });

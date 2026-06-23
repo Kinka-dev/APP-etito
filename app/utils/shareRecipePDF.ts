@@ -1,5 +1,4 @@
-import { CATEGORY_IMAGES } from "@/constants/categories";
-import { Category, Recipe } from "@/src/types";
+import { Recipe } from "@/src/types";
 import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Print from "expo-print";
@@ -74,18 +73,20 @@ async function generateRecipePDF(recipe: Recipe) {
     const logoBase64 = await loadLogoBase64();
 
     // ICONA CATEGORIA
-    const iconCategory = await loadIconBase64(
-      CATEGORY_IMAGES[recipe.category as Category],
+    const iconPeople = await loadIconBase64(
+      require("../../assets/icons/people-outline.png"),
     );
 
-    // ICONA TEMPO
     const iconTime = await loadIconBase64(
-      require("../../assets/images/orologio.png"),
+      require("../../assets/icons/time-outline.png"),
     );
 
-    // ICONA PORZIONI
-    const iconServings = await loadIconBase64(
-      require("../../assets/images/porzioni.png"),
+    const iconFlame = await loadIconBase64(
+      require("../../assets/icons/flame-outline.png"),
+    );
+
+    const iconCategory = await loadIconBase64(
+      require("../../assets/icons/pricetag-outline.png"),
     );
 
     // IMMAGINE PRINCIPALE
@@ -96,15 +97,6 @@ async function generateRecipePDF(recipe: Recipe) {
       require("../../assets/images/senza-immagine.jpg"),
     );
 
-    // FOTO OCR INGREDIENTI
-    const ingredientsOcrImage = await uriToBase64(
-      recipe.ingredientsPhoto ?? null,
-    );
-
-    // NOTE
-    const notesImage = await uriToBase64(recipe.notes?.image ?? null);
-    const notesOcrImage = await uriToBase64(recipe.notes?.ocrImage ?? null);
-
     // STEP (immagini + OCR)
     const stepsWithImages = await Promise.all(
       recipe.steps.map(async (s) => ({
@@ -113,230 +105,463 @@ async function generateRecipePDF(recipe: Recipe) {
         ocrBase64: await uriToBase64(s.textImageUri ?? null),
       })),
     );
-    function splitIngredientsForPdf(ingredients: any[]) {
-      const groups = ingredients || [];
 
-      const col1: any[] = [];
-      const col2: any[] = [];
+    // ⭐ FUNZIONE COLONNE DINAMICHE
+    function splitIngredientsIntoTwoColumns(groups: any[]) {
+      const rows: any[] = [];
 
-      let toggle = true;
+      groups.forEach((g: any) => {
+        if (!g.items || g.items.length === 0) return;
 
-      groups.forEach((group) => {
-        if (!group.items || group.items.length === 0) return;
+        rows.push({ type: "title", title: g.title });
 
-        if (toggle) col1.push(group);
-        else col2.push(group);
-
-        toggle = !toggle;
+        g.items.forEach((i: any) => {
+          rows.push({ type: "item", item: i });
+        });
       });
 
-      return { col1, col2 };
+      const half = Math.ceil(rows.length / 2);
+
+      return [rows.slice(0, half), rows.slice(half)];
     }
 
-    // INGREDIENTI — DIVISI IN DUE COLONNE
-    const { col1, col2 } = splitIngredientsForPdf(recipe.ingredients);
+    const [col1, col2] = splitIngredientsIntoTwoColumns(recipe.ingredients);
 
     // HTML PDF
     const html = `
 <html>
   <head>
     <style>
-      @font-face {
-        font-family: 'Outfit';
-        src: url(${fontBase64});
-      }
+  @font-face {
+    font-family: 'Outfit';
+    src: url(${fontBase64});
+  }
 
-      body {
-        font-family: 'Outfit';
-        padding: 28px;
-        color: #333;
-        line-height: 1.45;
-      }
+  body {
+    font-family: 'Outfit';
+    margin: 0;
+    padding: 0;
+    color: #000;
+    line-height: 1.8; /* ⭐ arioso */
+  }
 
-      h1 {
-        text-align: center;
-        font-size: 28px;
-        margin-bottom: 6px;
-      }
+  .page {
+    page-break-after: always;
+    padding: 40px;
+    padding-bottom: 60px
+  }
 
-      .logo {
-        width: 90px;
-        margin: 0 auto 20px auto;
-        display: block;
-      }
+  .page::after {
+  content: "";
+  display: block;
+  height: 20px; 
+}
 
-      .info-row {
-        display: flex;
-        justify-content: center;
-        gap: 40px;
-        margin: 20px 0;
-      }
+  /* --- CATEGORIA --- */
 
-      .info-item {
-        text-align: center;
-        font-size: 14px;
-      }
+  .category {
+    text-align: center;
+    color: #777; /* ⭐ grigio */
+    font-size: 16px;
+    margin-bottom: 10px;
+  }
 
-      .info-item img {
-        width: 30px;
-        margin-bottom: 4px;
-      }
+  /* --- TITOLO --- */
 
-      .main-image {
-        width: 100%;
-        border-radius: 14px;
-        margin: 20px 0;
-      }
+  .title {
+    text-align: center;
+    font-size: 45px;
+    font-weight: 700;
+    margin: 0 0 10px 0;
+    
+  }
 
-      h2 {
-        font-size: 22px;
-        margin-top: 40px;
-        margin-bottom: 12px;
-        border-bottom: 2px solid #eee;
-        padding-bottom: 6px;
-      }
+  /* --- INFO BASE --- */
 
-      h3 {
-        font-size: 17px;
-        margin-top: 18px;
-        margin-bottom: 6px;
-      }
+  .info-base {
+    text-align: center;
+    font-size: 16px;
+    margin-bottom: 30px;
+    color: #444;
+  }
 
-      ul {
-        padding-left: 18px;
-        margin-top: 4px;
-      }
+  /* --- BLOCCO FOTO + NOTE --- */
 
-      li {
-        margin-bottom: 4px;
-      }
+  .photo-notes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    height: 300px;
+    gap: 40px;
+    margin-bottom: 40px;
+    border-top: 1px solid "#eee";
+  }
 
-      .ingredients {
-        display: flex;
-        gap: 30px;
-      }
+  .photo-notes img {
+    width: 100%;
+    height: 250px;
+    object-fit: cover;
+    border-radius: 20px;
+    padding: 10px;
+  }
 
-      .col {
-        width: 50%;
-      }
+  .notes-right {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    text-align: left; /* ⭐ allineato a destra */
+    padding: 0 10px;
+  }
 
-      .step {
-        margin-bottom: 28px;
-        padding-bottom: 18px;
-        border-bottom: 1px solid #ddd;
-      }
+  .section-title {
+    font-weight: 700;
+    font-size: 18px;
+    color: #000;
+    height: 40px;
+    line-height: 40px;
+    text-align: center;
+  }
 
-      .step img {
-        width: 100%;
-        border-radius: 10px;
-        margin-top: 10px;
-      }
-    </style>
+  .notes-text {
+    font-size: 16px;
+    margin-top: 10px;
+  }
+
+  /* --- INGREDIENTI --- */
+
+  .ingredients-block {
+  margin-top: 20px;
+  min-height: 400px; /* ⭐ garantisce che si estenda */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+
+  .ingredients-block {
+    margin-top: 40px;
+    text-align: center;
+  }
+
+  .ingredients-columns {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  margin-top: 30px;
+}
+
+.col {
+  width: 45%; /* ⭐ larghezza fissa */
+}
+
+.ingredient-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.ingredient-row {
+  border-bottom: 1px solid #ddd;
+  padding: 10px 0;
+  font-size: 16px;
+  display: flex;
+  justify-content: space-between;
+}
+
+
+  .checkbox {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #000;
+    margin-left: 10px;
+    margin-top: 10px;
+  }
+
+
+  /* --- PROCEDIMENTI --- */
+
+.procedures-page {
+  padding-top: 40px;
+  padding-bottom: 40px;
+}
+
+.procedures-page::after {
+  content: "";
+  display: block;
+  height: 20px;
+}
+
+/* Contenitore dello step */
+.step {
+  page-break-inside: avoid;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 15px; 
+    padding: 20px 0 20px 0;
+
+}
+
+.step-title {
+  text-align: center;
+  font-weight: 700;
+  font-size: 18px;
+  text-decoration: underline;
+  margin-bottom: 5px;
+}
+
+/* Riga contenuto a 3 colonne */
+.step-row {
+  display: grid;
+  grid-template-columns: 20px 100px 1fr 20px;
+  gap: 20px;
+  align-items: start; 
+  position: relative;
+  
+
+}
+
+.step-row > * {
+  position: relative;
+  
+
+  
+}
+
+.step-row > *:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  right: -10px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #eee;
+}
+
+/* Numero */
+.step-number {
+  width: 20px;
+  height: 20px;
+  font-size: 25px;
+  font-weight: 700;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Colonna destra */
+.step-right {
+  display: flex;
+  flex-direction: column;
+  gap: 20px; 
+  padding-left: 20px;
+  border-left: 1px solid #eee;
+  padding-right: 20px;
+}
+
+/* Contenitore immagine + testo */
+.step-content-row {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start; 
+}
+
+/* Immagine */
+.step-image {
+  width: 100px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+/* Testo dello step */
+.step-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+/* Checkbox */
+.step-checkbox {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #000;
+  margin-top: 0;
+  align-self: center;
+}
+
+.step-text p {
+  margin: 0; /* ⭐ evita che il testo parta più in basso */
+  padding: 0;
+}
+
+.step-row.no-image {
+  grid-template-columns: 20px 1fr 20px;
+}
+
+.step-right.only-text {
+  justify-content: center; 
+}
+
+.step-right.only-text .step-text {
+  justify-content: center; 
+  margin-top: 10px;
+}
+
+.title-separator {
+  width: 100%;
+  height: 1px;
+  background: #ccc;
+  margin: 10px 0 10px 0;
+}
+
+
+</style>
   </head>
 
   <body>
 
-    <!-- LOGO -->
-    <img src="${logoBase64}" class="logo" />
+    <!-- ⭐ PAGINA 1 -->
+    <div class="page">
 
-    <h1>${recipe.title}</h1>
+   <!-- CATEGORIA -->
+  <div class="category">• • • ${recipe.category} • • •</div>
 
-    <div class="info-row">
-      <div class="info-item">
-        <img src="${iconTime}" />
-        <div>${recipe.prepTime} min</div>
-      </div>
+  <!-- TITOLO -->
+  <div class="title">${recipe.title}</div>
+  <div class="title-separator"></div>
 
-      <div class="info-item">
-        <img src="${iconServings}" />
-        <div>${recipe.servings} porzioni</div>
-      </div>
+  <!-- INFO BASE -->
+  <div class="info-base">
+  ${recipe.servings} porzioni &nbsp; | &nbsp; ${recipe.prepTime} min prep &nbsp; | &nbsp; ${recipe.cookTime ?? "-"} min cottura
+</div>
 
-      <div class="info-item">
-        <img src="${iconCategory}" />
-        <div>${recipe.category}</div>
-      </div>
-    </div>
 
-    <img 
-      src="${mainImage || defaultImageBase64}" 
-      class="main-image"
-    />
+  <!-- FOTO + NOTE -->
+  <div class="photo-notes">
 
-    <h2>Ingredienti</h2>
+    <img src="${mainImage || defaultImageBase64}" />
 
-    ${
-      ingredientsOcrImage
-        ? `<img src="${ingredientsOcrImage}" style="width:100%; margin-bottom:20px;" />`
-        : ""
-    }
+    <div class="notes-right">
+      <div class="section-title">Note</div>
+        <div class="title-separator"></div>
 
-    <div class="ingredients">
-      <div class="col">
-        ${col1
-          .map(
-            (g: any) => `
-      <h3>${g.title}</h3>
-      <ul>
-        ${g.items
-          .map((i: any) => `<li>${i.quantity} ${i.unit} — ${i.name}</li>`)
-          .join("")}
-      </ul>
-    `,
-          )
-          .join("")}
-
-      </div>
-
-      <div class="col">
-        ${col2
-          .map(
-            (g: any) => `
-      <h3>${g.title}</h3>
-      <ul>
-        ${g.items
-          .map((i: any) => `<li>${i.quantity} ${i.unit} — ${i.name}</li>`)
-          .join("")}
-      </ul>
-    `,
-          )
-          .join("")}
-
+      <div class="notes-text">
+        ${recipe.notes?.text ?? ""}
       </div>
     </div>
 
-    <h2>Procedimento</h2>
+  </div>
 
-    ${stepsWithImages
-      .map(
-        (s, i) => `
-      <div class="step">
-        <h3>Step ${i + 1} — ${s.title || ""}</h3>
-        <p>${s.description || ""}</p>
+  <!-- INGREDIENTI -->
+  <div class="ingredients-block">
 
-        ${s.imageBase64 ? `<img src="${s.imageBase64}" />` : ""}
+  <div class="section-title">Ingredienti</div>
+    <div class="title-separator"></div>
 
-        ${s.ocrBase64 ? `<img src="${s.ocrBase64}" />` : ""}
+
+  <div class="ingredients-columns">
+
+    <!-- COLONNA 1 -->
+    <div class="col">
+    ${col1
+      .map((row: any) => {
+        if (row.type === "title") {
+          const t = row.title?.trim().toLowerCase();
+          if (!t || t === "ingredienti") {
+            return ""; // ⭐ non mostrare il titolo
+          }
+          return `<div class="ingredient-title">${row.title}</div>`;
+        }
+
+        const i = row.item;
+        return `
+      <div class="ingredient-row">
+        <span>${i.name} — ${i.quantity} ${i.unit}</span>
+        <span class="checkbox"></span>
       </div>
-    `,
-      )
+    `;
+      })
       .join("")}
+    </div>
 
-    ${recipe.notes?.text || notesImage || notesOcrImage ? `<h2>Note</h2>` : ""}
+    <!-- COLONNA 2 -->
+    <div class="col">
+      ${col2
+        .map((row: any) => {
+          if (row.type === "title") {
+            const t = row.title?.trim().toLowerCase();
+            if (!t || t === "ingredienti") {
+              return "";
+            }
+            return `<div class="ingredient-title">${row.title}</div>`;
+          }
 
-    ${
-      notesImage
-        ? `<img src="${notesImage}" style="width:100%; margin-bottom:20px;" />`
-        : ""
-    }
+          const i = row.item;
+          return `
+      <div class="ingredient-row">
+        <span>${i.name} — ${i.quantity} ${i.unit}</span>
+        <span class="checkbox"></span>
+      </div>
+    `;
+        })
+        .join("")}
+    </div>
 
-    ${
-      notesOcrImage
-        ? `<img src="${notesOcrImage}" style="width:100%; margin-bottom:20px;" />`
-        : ""
-    }
+  </div>
 
-    ${recipe.notes?.text ? `<p>${recipe.notes.text}</p>` : ""}
+</div>
+
+
+
+<div class="procedures-page">
+<div class="page">
+
+  <div class="section-title">Procedimenti</div>
+    <div class="title-separator"></div>
+
+
+<div style="margin-top:40px"></div>
+
+${stepsWithImages
+  .map((s: any, i: number) => {
+    const hasImage = !!s.imageBase64;
+    const isSingle = stepsWithImages.length === 1;
+
+    return `
+      <div class="step">
+
+        <!-- TITOLO STEP -->
+        ${s.title ? `<div class="step-title">${s.title}</div>` : ""}
+
+        <!-- RIGA A 3 COLONNE -->
+        <div class="step-row ${hasImage ? "" : "no-image"}">
+
+          <!-- COLONNA 1: NUMERO -->
+          ${
+            isSingle ? `<div></div>` : `<div class="step-number">${i + 1}</div>`
+          }
+
+          <!-- COLONNA 2: IMMAGINE (se presente) -->
+          ${hasImage ? `<img class="step-image" src="${s.imageBase64}" />` : ""}
+
+          <!-- COLONNA 3: TESTO -->
+          <div class="step-text">
+            <p>${s.description || ""}</p>
+          </div>
+
+          <div class="step-checkbox"></div>
+
+        </div>
+
+      </div>
+    `;
+  })
+  .join("")}
+
+
+
+</div>
+</div>
+
 
   </body>
 </html>

@@ -1,5 +1,6 @@
 // app/edit/[id].tsx
 import CategoryDropdown from "@/components/CategoryDropdown";
+import { useChooseImageSource } from "@/components/chooseImageSource";
 import Input from "@/components/Input";
 import Text from "@/components/Text";
 import {
@@ -9,44 +10,53 @@ import {
 } from "@/constants/categories";
 import { COLORS } from "@/constants/colors";
 import { useRecipeContext } from "@/context/RecipeContext";
-import { useDynamicImageSize } from "@/hooks/useDynamicImageSize";
 import { Category, Recipe } from "@/src/types";
 import { Ionicons } from "@expo/vector-icons";
+import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import Fuse from "fuse.js";
 import React, { useEffect, useState } from "react";
 import {
-  ActionSheetIOS,
   Alert,
   Image,
   ImageBackground,
+  Keyboard,
   LayoutAnimation,
   Modal,
   Platform,
   Pressable,
+  Image as RNImage,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import MlkitOcr from "react-native-mlkit-ocr";
 import Animated, {
   Easing,
   FadeInDown,
+  FadeInLeft,
   FadeInRight,
   FadeOutLeft,
+  FadeOutRight,
   FadeOutUp,
   interpolate,
+  interpolateColor,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
+  withSequence,
   withTiming,
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { nutritionDB } from "../data/nutritionDB";
 import { nutritionIndex } from "../data/nutritionIndex";
+import { normalizeImage } from "../utils/normalizeImage";
 import { parseIngredientLine } from "../utils/parseIngredients";
+type IoniconName = keyof typeof Ionicons.glyphMap;
 
 const CATEGORY_ITEMS = CATEGORIES.map((cat) => ({
   id: cat,
@@ -94,40 +104,77 @@ interface StepForm {
    COMPONENTE IMMAGINE STEP
 ============================================================ */
 
-function StepImage({
-  uri,
-  onPress,
-}: {
+type StepImageProps = {
   uri: string | null;
   onPress: () => void;
-}) {
-  const size = useDynamicImageSize(uri);
+};
 
+function StepImage({ uri, onPress }: StepImageProps) {
   return (
     <TouchableOpacity
-      activeOpacity={0.9}
       onPress={onPress}
-      style={styles.stepImageButtonExpanded}
+      style={{
+        width: "100%",
+        height: 200,
+        backgroundColor: "#f0f0f0",
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: "#eee",
+        overflow: "hidden",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
     >
       {uri ? (
-        <View style={styles.stepImageContainer}>
-          <Image
-            source={{ uri }}
-            style={[size, styles.stepImageExpanded]}
-            resizeMode="cover"
-          />
-        </View>
+        <Image
+          source={{ uri }}
+          style={{ width: "100%", height: "100%" }}
+          resizeMode="cover"
+        />
       ) : (
-        <View style={styles.stepImagePlaceholderExpanded}>
-          <Ionicons name="camera-outline" size={40} color={COLORS.secondary} />
-          <Text style={styles.stepImagePlaceholderTextExpanded}>
+        <>
+          <Ionicons name="camera-outline" size={50} color={COLORS.secondary} />
+          <Text style={styles.heroPlaceholderText}>
             Tocca per aggiungere immagine
           </Text>
-        </View>
+        </>
       )}
     </TouchableOpacity>
   );
 }
+
+const StepOcrPreview = ({ uri }: { uri: string }) => {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+
+  useEffect(() => {
+    RNImage.getSize(
+      uri,
+      (w: number, h: number) => setSize({ w, h }),
+      () => {},
+    );
+  }, [uri]);
+
+  if (!size) return null;
+
+  const MAX_WIDTH = 300;
+  const displayW = MAX_WIDTH;
+  const displayH = (size.h / size.w) * MAX_WIDTH;
+
+  return (
+    <View style={{ alignItems: "center", marginTop: 10 }}>
+      <ExpoImage
+        source={{ uri }}
+        style={{
+          width: displayW,
+          height: displayH,
+          borderRadius: 12,
+          backgroundColor: "#eee",
+        }}
+        contentFit="cover"
+      />
+    </View>
+  );
+};
 
 const allIngredients = Object.values(nutritionDB).flatMap((category) =>
   Object.entries(category).map(([name, data]) => ({
@@ -157,6 +204,7 @@ export default function EditRecipeScreen() {
 
   const [title, setTitle] = useState("");
   const [prepTime, setPrepTime] = useState("");
+  const [cookTime, setCookTime] = useState("");
   const [servings, setServings] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
@@ -174,17 +222,15 @@ export default function EditRecipeScreen() {
     null,
   );
 
-  const [isScrolling, setIsScrolling] = useState(false);
+  const [openStepOverlay, setOpenStepOverlay] = useState<number | null>(null);
+
   const [openActions, setOpenActions] = useState<string | null>(null);
-  const [openIngredientsMenu, setOpenIngredientsMenu] = useState(false);
   const [groupingMode, setGroupingMode] = useState(false);
   const [selectedIngredients, setSelectedIngredients] = useState<string[]>([]);
   const [showNewGroupModal, setShowNewGroupModal] = useState(false);
-  const [tempGroupTitle, setTempGroupTitle] = useState("");
+  const [newGroupTitle, setNewGroupTitle] = useState("");
 
   const [ingredientsPhoto, setIngredientsPhoto] = useState<string | null>(null);
-  const ingPhotoStyle = useDynamicImageSize(ingredientsPhoto);
-
   const [ingredients, setIngredients] = useState<IngredientFlat[]>([]);
   const [groups, setGroups] = useState<GroupFlat[]>([]);
   const [items, setItems] = useState<FlatItem[]>([]);
@@ -198,12 +244,135 @@ export default function EditRecipeScreen() {
   const [selectedIngredientIndex, setSelectedIngredientIndex] = useState<
     number | null
   >(null);
+  const uid = () =>
+    Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+  const [cropSize, setCropSize] = useState<{ w: number; h: number } | null>(
+    null,
+  );
+  const MAX_WIDTH = 300;
+
+  const displayW = MAX_WIDTH;
+  const displayH = cropSize ? (cropSize.h / cropSize.w) * MAX_WIDTH : 0;
 
   const fadeIn = useSharedValue(0);
   const slideUp = useSharedValue(0);
 
-  const uid = () =>
-    Math.random().toString(36).slice(2) + Date.now().toString(36);
+  useEffect(() => {
+    if (!ingredientsPhoto) return;
+
+    RNImage.getSize(
+      ingredientsPhoto,
+      (w: number, h: number) => {
+        setCropSize({ w, h });
+      },
+      (error) => console.log("Error loading image size:", error),
+    );
+  }, [ingredientsPhoto]);
+
+  useEffect(() => {
+    setIngredients((prev) =>
+      prev.map((i) => ({
+        ...i,
+        groupId: i.groupId === "" ? null : i.groupId,
+      })),
+    );
+  }, []);
+
+  const chooseImage = useChooseImageSource((croppedUri) => {
+    setMainImageUri(croppedUri);
+  });
+
+  const chooseStepImage = async (index: number) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 1,
+      exif: true,
+    });
+
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+
+    // ⭐ Normalizzazione completa (EXIF + resize coerente)
+    const normalizedUri = await normalizeImage(asset.uri);
+
+    // ⭐ Callback per salvare l’immagine ritagliata
+    globalThis._onCrop = (finalUri: string) => {
+      setSteps((prev) =>
+        prev.map((s, i) => (i === index ? { ...s, imageUri: finalUri } : s)),
+      );
+    };
+
+    // ⭐ Apri il CropScreen SENZA parametri che forzano zoom
+    router.push({
+      pathname: "/CropScreen",
+      params: { uri: normalizedUri },
+    });
+  };
+
+  const chooseOCRImage = async (index: number) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 1,
+      exif: true,
+    });
+
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+
+    // ⭐ Normalizzazione completa (EXIF + resize coerente)
+    const normalizedUri = await normalizeImage(asset.uri);
+
+    // ⭐ Callback globale per il CropScreen OCR
+    globalThis._onCropStepOcr = async (finalUri: string) => {
+      // 1) salva l’immagine ritagliata
+      setSteps((prev) =>
+        prev.map((s, i) =>
+          i === index ? { ...s, textImageUri: finalUri } : s,
+        ),
+      );
+
+      // 2) estrai il testo
+      const text = await extractTextFromImage(finalUri);
+
+      // 3) salva il testo nella descrizione dello step
+      setSteps((prev) =>
+        prev.map((s, i) => (i === index ? { ...s, description: text } : s)),
+      );
+    };
+
+    // ⭐ Apri il CropScreen OCR
+    router.push({
+      pathname: "/StepOcrCropScreen",
+      params: { uri: normalizedUri },
+    });
+  };
+
+  const chooseIngredientsPhoto = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 1,
+      exif: true,
+    });
+
+    if (result.canceled) return;
+
+    const normalized = await normalizeImage(result.assets[0].uri);
+
+    globalThis._onCropIngredient = async (finalUri: string) => {
+      setIngredientsPhoto(finalUri);
+
+      const text = await extractTextFromImage(finalUri);
+      parseIngredientsFromText(text);
+    };
+
+    router.push({
+      pathname: "/IngredientCropScreen",
+      params: { uri: normalized },
+    });
+  };
 
   const allIngredients = Object.values(nutritionDB).flatMap((category) =>
     Object.entries(category).map(([name, data]) => ({
@@ -221,30 +390,18 @@ export default function EditRecipeScreen() {
   /* ============================================================
      CARICAMENTO RICETTA
   ============================================================ */
-  const StepEllipsisButton = ({ onPress }: { onPress: () => void }) => (
-    <Pressable
-      onPress={onPress}
-      hitSlop={10} // area di touch controllata
-      style={{
-        padding: 6,
-        borderRadius: 8,
-        justifyContent: "center",
-        alignItems: "center",
-      }}
-      pointerEvents="box-only" // ⭐ fondamentale
-    >
-      <Ionicons name="ellipsis-vertical" size={20} color={COLORS.primary} />
-    </Pressable>
-  );
 
   useEffect(() => {
     const recipe = getRecipeById(id as string);
     if (!recipe) return;
 
+    console.log("RECIPE LOADED IN EDIT:", recipe);
+
     setTitle(recipe.title);
     setCategory(recipe.category);
-    setPrepTime(String(recipe.prepTime));
-    setServings(String(recipe.servings));
+    setPrepTime(String(recipe.prepTime ?? ""));
+    setCookTime(String(recipe.cookTime ?? ""));
+    setServings(String(recipe.servings ?? ""));
     setMainImageUri(recipe.imageUri ?? null);
 
     // TAGS
@@ -307,8 +464,6 @@ export default function EditRecipeScreen() {
     );
   }, [id]);
 
-  // Normalizza groupId vuoti
-  // ⭐ Normalizza groupId per compatibilità con ADD
   useEffect(() => {
     setIngredients((prev) =>
       prev.map((i) => ({
@@ -540,21 +695,28 @@ export default function EditRecipeScreen() {
   };
 
   const createNewGroup = (title: string) => {
-    if (!title.trim() || selectedIngredients.length === 0) return;
+    if (!title.trim()) return;
 
     const newGroupId = uid();
 
+    // 1️⃣ crea SEMPRE il gruppo
     setGroups((prev) => [
       ...prev,
       { id: newGroupId, type: "group", title, collapsed: false },
     ]);
 
-    setIngredients((prev) =>
-      prev.map((i) =>
-        selectedIngredients.includes(i.id) ? { ...i, groupId: newGroupId } : i,
-      ),
-    );
+    // 2️⃣ se ci sono ingredienti selezionati → assegnali
+    if (selectedIngredients.length > 0) {
+      setIngredients((prev) =>
+        prev.map((i) =>
+          selectedIngredients.includes(i.id)
+            ? { ...i, groupId: newGroupId }
+            : i,
+        ),
+      );
+    }
 
+    // 3️⃣ reset
     setSelectedIngredients([]);
     setGroupingMode(false);
   };
@@ -584,16 +746,15 @@ export default function EditRecipeScreen() {
   /* ============================================================
      OCR INGREDIENTI
   ============================================================ */
+  const chooseImageForIngredients = useChooseImageSource(async (croppedUri) => {
+    setIngredientsPhoto(croppedUri);
+
+    const text = await extractTextFromImage(croppedUri);
+    parseIngredientsFromText(text);
+  });
 
   const handleOCRIngredients = () => {
-    chooseImageSource(async (uri) => {
-      if (!uri) return;
-
-      setIngredientsPhoto(uri);
-
-      const text = await extractTextFromImage(uri);
-      parseIngredientsFromText(text);
-    });
+    chooseIngredientsPhoto();
   };
 
   function parseIngredientsFromText(text: string) {
@@ -630,59 +791,6 @@ export default function EditRecipeScreen() {
   /* ============================================================
      OCR GENERALE
   ============================================================ */
-
-  const chooseImageSource = (onPick: (uri: string) => void) => {
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ["Annulla", "Scatta foto", "Scegli dalla galleria"],
-          cancelButtonIndex: 0,
-        },
-        async (buttonIndex) => {
-          if (buttonIndex === 1) {
-            const result = await ImagePicker.launchCameraAsync({
-              quality: 0.9,
-            });
-            if (!result.canceled) onPick(result.assets[0].uri);
-          }
-
-          if (buttonIndex === 2) {
-            const result = await ImagePicker.launchImageLibraryAsync({
-              quality: 0.9,
-            });
-            if (!result.canceled) onPick(result.assets[0].uri);
-          }
-        },
-      );
-    } else {
-      Alert.alert(
-        "Scegli immagine",
-        "",
-        [
-          {
-            text: "Scatta foto",
-            onPress: async () => {
-              const result = await ImagePicker.launchCameraAsync({
-                quality: 0.9,
-              });
-              if (!result.canceled) onPick(result.assets[0].uri);
-            },
-          },
-          {
-            text: "Scegli dalla galleria",
-            onPress: async () => {
-              const result = await ImagePicker.launchImageLibraryAsync({
-                quality: 0.9,
-              });
-              if (!result.canceled) onPick(result.assets[0].uri);
-            },
-          },
-          { text: "Annulla", style: "cancel" },
-        ],
-        { cancelable: true },
-      );
-    }
-  };
 
   const recognizeTextFromImage = async (uri: string) => {
     try {
@@ -743,15 +851,22 @@ export default function EditRecipeScreen() {
     });
   };
 
-  const handleOCRStep = async (index: number) => {
-    chooseImageSource(async (uri) => {
-      const text = await recognizeTextFromImage(uri);
+  const duplicateStep = (index: number) => {
+    setSteps((prev) => {
+      const arr = [...prev];
+      const item = prev[index];
 
-      setSteps((prev) =>
-        prev.map((s, i) =>
-          i === index ? { ...s, textImageUri: uri, description: text } : s,
-        ),
-      );
+      const clone: StepForm = {
+        title: item.title,
+        description: item.description,
+        imageUri: item.imageUri ?? null,
+        textImageUri: null,
+        collapsed: false,
+        actionsOpen: false,
+      };
+
+      arr.splice(index + 1, 0, clone);
+      return arr;
     });
   };
 
@@ -831,7 +946,8 @@ export default function EditRecipeScreen() {
       id: baseId ?? recipe.id,
       title: title.trim(),
       category: category === "all" ? "altro" : category,
-      prepTime: parseInt(prepTime) || 0,
+      prepTime: prepTime.trim(),
+      cookTime: cookTime.trim(),
       servings: parseInt(servings) || 1,
       imageUri: mainImageUri || undefined,
       tags,
@@ -869,873 +985,666 @@ export default function EditRecipeScreen() {
     }
   };
 
+  const noIngredients =
+    ingredients.length === 0 && groups.length === 0 && !ingredientsPhoto;
+
+  const opacity = useSharedValue(1);
+
+  const pulse = useSharedValue(1);
+  const pulseColor = useSharedValue(0);
+
+  useEffect(() => {
+    if (noIngredients) {
+      pulse.value = withRepeat(
+        withSequence(
+          withTiming(1.15, { duration: 400 }),
+          withTiming(1, { duration: 400 }),
+        ),
+        -1,
+        false,
+      );
+
+      pulseColor.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 400 }),
+          withTiming(0, { duration: 400 }),
+        ),
+        -1,
+        false,
+      );
+    } else {
+      pulse.value = withTiming(1, { duration: 300 });
+      pulseColor.value = withTiming(0, { duration: 300 });
+    }
+  }, [noIngredients]);
+
+  const pulseStyle = useAnimatedStyle(() => {
+    const color = interpolateColor(
+      pulseColor.value,
+      [0, 1],
+      [COLORS.textLight, COLORS.secondary], // da grigio → rosa
+    );
+
+    return {
+      transform: [{ scale: pulse.value }],
+      opacity: pulse.value < 1.05 ? 1 : 0.8,
+      color,
+    };
+  });
+
+  const getStepActions = (index: number) => [
+    {
+      label: "OCR",
+      icon: "text-outline" as IoniconName,
+      onPress: () => chooseOCRImage(index),
+    },
+    {
+      label: "Duplica",
+      icon: "copy-outline" as IoniconName,
+      onPress: () => duplicateStep(index),
+    },
+    {
+      label: "Su",
+      icon: "caret-up-outline" as IoniconName,
+      onPress: () => moveStepUp(index),
+    },
+    {
+      label: "Giù",
+      icon: "caret-down-outline" as IoniconName,
+      onPress: () => moveStepDown(index),
+    },
+    {
+      label: "Elimina",
+      icon: "trash-outline" as IoniconName,
+      danger: true,
+      onPress: () => removeStep(index),
+    },
+  ];
+
+  const renderStepAction = (index: number, a: any) => (
+    <TouchableOpacity
+      key={a.label}
+      style={[styles.actionExpanded, a.danger && styles.actionExpandedDanger]}
+      onPress={() => {
+        a.onPress();
+        setOpenStepOverlay(null);
+      }}
+    >
+      <Ionicons
+        name={a.icon}
+        size={20}
+        color={a.danger ? "#cb0047" : COLORS.primary}
+        style={{ marginBottom: 4 }}
+      />
+      <Text
+        style={[styles.actionExpandedText, a.danger && { color: "#cb0047" }]}
+      >
+        {a.label}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  const renderStepActionsCollapsed = (index: number) => {
+    const actions = getStepActions(index);
+
+    return actions.map((a, i) => (
+      <React.Fragment key={i}>
+        <TouchableOpacity
+          style={styles.stepActionBtnCollapsed}
+          onPress={() => {
+            a.onPress();
+            setOpenStepOverlay(null);
+          }}
+        >
+          <Ionicons
+            name={a.icon}
+            size={20}
+            color={a.danger ? "#cb0047" : COLORS.secondary}
+          />
+          <Text
+            style={[
+              styles.stepActionLabelCollapsed,
+              a.danger && { color: "#cb0047" },
+            ]}
+          >
+            {a.label}
+          </Text>
+        </TouchableOpacity>
+
+        {i < actions.length - 1 && <View style={styles.stepDividerVertical} />}
+      </React.Fragment>
+    ));
+  };
+
+  const renderStepActionsExpanded = (index: number) => {
+    const actions = getStepActions(index);
+
+    return (
+      <View style={styles.expandedGrid}>
+        {/* ⭐ RIGA 1 */}
+        <View style={styles.expandedRow}>
+          {renderStepAction(index, actions[0])}
+          <View style={styles.stepDividerVerticalTop} />
+          {renderStepAction(index, actions[1])}
+        </View>
+
+        {/* ⭐ RIGA 2 */}
+        <View style={styles.expandedRow}>
+          {renderStepAction(index, actions[2])}
+          <View style={styles.stepDividerVerticalTop} />
+          {renderStepAction(index, actions[3])}
+        </View>
+
+        {/* ⭐ RIGA 3 (solo Elimina → centrato) */}
+        <View style={[styles.expandedRow, { borderColor: "white" }]}>
+          {renderStepAction(index, actions[4])}
+        </View>
+      </View>
+    );
+  };
+
   /* ============================================================
      RENDER
   ============================================================ */
 
   return (
-    <ImageBackground
-      source={require("../../assets/images/sfondo.png")}
-      style={styles.bg}
-      resizeMode="cover"
-    >
-      <SafeAreaView style={styles.container}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
-          onScroll={(e) => {
-            const y = e.nativeEvent.contentOffset.y;
-            setIsScrolling(y > 40);
-          }}
-        >
-          {/* ============================================================
+    <SafeAreaView style={styles.container}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={{ flex: 1 }}>
+          <KeyboardAwareScrollView
+            enableOnAndroid={true}
+            extraScrollHeight={80}
+            extraHeight={Platform.OS === "ios" ? 120 : 80}
+            keyboardOpeningTime={0}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{
+              paddingBottom: 10,
+            }}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* ============================================================
              HERO
           ============================================================ */}
-          <Animated.View style={[styles.heroContainer, heroStyle]}>
-            <TouchableOpacity
-              onPress={() => chooseImageSource((uri) => setMainImageUri(uri))}
-              style={styles.heroContainer}
+            <ImageBackground
+              source={require("../../assets/images/sfondo.png")}
+              style={styles.bg}
+              resizeMode="cover"
             >
-              {mainImageUri ? (
-                <>
-                  <Image
-                    source={{ uri: mainImageUri }}
-                    style={styles.heroImage}
-                  />
-                  <TouchableOpacity
-                    onPress={() => setMainImageUri(null)}
-                    style={styles.deleteMainSmallButton}
-                  >
-                    <Ionicons name="close" size={22} color="#cb0047" />
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <View style={styles.heroPlaceholder}>
-                  <Ionicons
-                    name="camera-outline"
-                    size={60}
-                    color={COLORS.secondary}
-                  />
-                  <Text style={styles.heroPlaceholderText}>
-                    Tocca per aggiungere immagine
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </Animated.View>
-
-          {/* ============================================================
-             CARD ESPANDIBILE
-          ============================================================ */}
-          <Animated.View style={[styles.cardExpanded, cardStyle]}>
-            <View>
-              <View style={styles.header}>
-                <Text variant="title" style={styles.title}>
-                  Modifica ricetta
-                </Text>
-              </View>
-
-              {/* TITOLO */}
-              <Input
-                value={title}
-                onChangeText={setTitle}
-                placeholder="Nome della ricetta"
-                multiline
-                style={styles.titleInput}
-              />
-
-              {/* CATEGORIA */}
-              <View
-                style={{
-                  marginBottom: 25,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Text style={{ color: COLORS.primary }}>•••</Text>
-                <CategoryDropdown
-                  categories={CATEGORY_ITEMS}
-                  selected={category}
-                  onSelect={setCategory}
-                />
-                <Text style={{ color: COLORS.primary }}>•••</Text>
-              </View>
-
-              {/* ⭐ INFO IN RIGA */}
-              <View style={styles.infoRow}>
-                <Ionicons
-                  name="time-outline"
-                  size={22}
-                  color={COLORS.primary}
-                />
-                <Input
-                  placeholder="Tempo"
-                  value={prepTime}
-                  onChangeText={setPrepTime}
-                  keyboardType="default"
-                  style={styles.infoInputSmall}
-                />
-
-                <Ionicons
-                  name="people-outline"
-                  size={22}
-                  color={COLORS.primary}
-                />
-                <Input
-                  placeholder="Porzioni"
-                  value={servings}
-                  onChangeText={setServings}
-                  keyboardType="default"
-                  style={styles.infoInputSmall}
-                />
-              </View>
-
-              {/* ⭐ TAGS */}
-              <View style={styles.tagsContainer}>
-                <Input
-                  placeholder="Aggiungi tag"
-                  value={tagInput}
-                  onChangeText={setTagInput}
-                  onSubmitEditing={() => {
-                    if (tagInput.trim()) {
-                      setTags((prev) => [...prev, tagInput.trim()]);
-                      setTagInput("");
-                    }
-                  }}
-                  style={styles.tagInput}
-                />
-
-                <View style={styles.tagsList}>
-                  {tags.map((tag, i) => (
-                    <TouchableOpacity
-                      key={i}
-                      style={styles.tag}
-                      onPress={() =>
-                        setTags((prev) => prev.filter((t) => t !== tag))
-                      }
-                    >
-                      <Text bold style={styles.tagText}>
-                        #{tag} ✕
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* ⭐ NOTE */}
-              <View style={styles.notesInline}>
-                <Text variant="heading" style={styles.sectionTitle}>
-                  Note e Curiosità
-                </Text>
-
-                <Input
-                  placeholder="Aggiungi note..."
-                  value={notesText}
-                  onChangeText={setNotesText}
-                  multiline
-                  style={styles.notesInput}
-                />
-              </View>
-
-              {/* ============================================================
-             TABS
-             ============================================================ */}
-              <View style={styles.tabsContainer}>
+              <Animated.View style={[styles.heroContainer, heroStyle]}>
                 <TouchableOpacity
-                  onPress={() => setActiveTab("ingredienti")}
-                  style={[
-                    styles.tab,
-                    activeTab === "ingredienti" && styles.tabActive,
-                  ]}
+                  onPress={() => chooseImage()}
+                  style={{ height: 300 }}
                 >
-                  <Text
-                    bold
-                    style={[
-                      styles.tabLabel,
-                      activeTab === "ingredienti" && styles.tabLabelActive,
-                    ]}
-                  >
-                    Ingredienti
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => setActiveTab("procedimento")}
-                  style={[
-                    styles.tab,
-                    activeTab === "procedimento" && styles.tabActive,
-                  ]}
-                >
-                  <Text
-                    bold
-                    style={[
-                      styles.tabLabel,
-                      activeTab === "procedimento" && styles.tabLabelActive,
-                    ]}
-                  >
-                    Procedimento
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* ============================================================
-                  INGREDIENTI — STILE APPLE NOTES
-               ============================================================ */}
-              {activeTab === "ingredienti" && (
-                <View style={styles.sectionWrapper}>
-                  {/* ===========================
-                       BANNER RAGGRUPPAMENTO
-                      ============================ */}
-                  {groupingMode && (
-                    <View style={styles.groupingBanner}>
-                      <Text style={styles.groupingText}>
-                        Seleziona gli ingredienti da inserire in un gruppo
-                      </Text>
-
-                      {selectedIngredients.length > 0 && (
-                        <View style={styles.groupCreateBox}>
-                          <Text style={styles.groupCreateLabel}>
-                            Crea nuovo gruppo
-                          </Text>
-
-                          <Input
-                            placeholder="Titolo gruppo"
-                            value={tempGroupTitle}
-                            onChangeText={setTempGroupTitle}
-                            style={styles.groupInput}
-                          />
-
-                          <TouchableOpacity
-                            style={styles.groupCreateBtn}
-                            onPress={() => {
-                              const title = tempGroupTitle.trim();
-                              // ❌ titolo vuoto
-                              if (!title) {
-                                alert("Inserisci un nome per il gruppo");
-                                return;
-                              }
-
-                              // ❌ titolo duplicato
-                              const exists = groups.some(
-                                (g) =>
-                                  g.title.trim().toLowerCase() ===
-                                  title.toLowerCase(),
-                              );
-
-                              if (exists) {
-                                alert("Esiste già un gruppo con questo nome");
-                                return;
-                              }
-
-                              createNewGroup(title);
-                              setTempGroupTitle("");
-                            }}
-                          >
-                            <Text style={styles.groupCreateBtnText}>
-                              Crea gruppo
-                            </Text>
-                          </TouchableOpacity>
-
-                          {groups.length > 0 && (
-                            <>
-                              <Text style={styles.groupCreateLabel}>
-                                Oppure aggiungi a un gruppo esistente
-                              </Text>
-
-                              {groups.map((g) => (
-                                <TouchableOpacity
-                                  key={g.id}
-                                  style={styles.groupExistingBtn}
-                                  onPress={() => {
-                                    addIngredientsToGroup(
-                                      g.id,
-                                      selectedIngredients,
-                                    );
-                                    setGroupingMode(false);
-                                    setSelectedIngredients([]);
-                                  }}
-                                >
-                                  <Text style={styles.groupExistingBtnText}>
-                                    {g.title}
-                                  </Text>
-                                </TouchableOpacity>
-                              ))}
-                            </>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  )}
-
-                  {/* ===========================
-                      FOTO OCR
-                    ============================ */}
-                  {ingredientsPhoto && (
-                    <View style={{ width: "100%", marginBottom: 20 }}>
+                  {mainImageUri ? (
+                    <>
+                      <Image
+                        source={{ uri: mainImageUri }}
+                        style={styles.heroImage}
+                      />
                       <TouchableOpacity
-                        onPress={() => setIngredientsPhoto(null)}
-                        style={styles.deleteSmallButton}
+                        onPress={() => setMainImageUri(null)}
+                        style={styles.deleteMainSmallButton}
                       >
                         <Ionicons name="close" size={20} color="#cb0047" />
                       </TouchableOpacity>
-
-                      <View style={styles.imageWrapper}>
-                        <Image
-                          source={{ uri: ingredientsPhoto }}
-                          style={[ingPhotoStyle, styles.dynamicImage]}
-                          resizeMode="contain"
-                        />
-                      </View>
+                    </>
+                  ) : (
+                    <View style={styles.heroPlaceholder}>
+                      <Ionicons
+                        name="camera-outline"
+                        size={60}
+                        color={COLORS.secondary}
+                      />
+                      <Text style={styles.heroPlaceholderText}>
+                        Tocca per aggiungere immagine
+                      </Text>
                     </View>
                   )}
+                </TouchableOpacity>
+              </Animated.View>
+            </ImageBackground>
 
-                  {/* ===========================
-        LISTA INGREDIENTI
-    ============================ */}
-                  {visibleItems.map((item) => {
-                    /* ===========================
-            GRUPPO
-      ============================ */
-                    if (item.type === "group") {
-                      const groupIngredients = ingredientsInGroup(item.id);
+            {/* ============================================================
+             CARD ESPANDIBILE
+          ============================================================ */}
+            <Animated.View style={[styles.cardExpanded, cardStyle]}>
+              <View>
+                <View style={styles.header}>
+                  <Text variant="title" style={styles.title}>
+                    Modifica ricetta
+                  </Text>
+                </View>
 
-                      return (
-                        <View
-                          key={item.id}
-                          style={[styles.groupCard, { marginBottom: 20 }]}
+                {/* TITOLO */}
+                <Input
+                  value={title}
+                  onChangeText={setTitle}
+                  placeholder="Nome della ricetta"
+                  multiline
+                  style={styles.titleInput}
+                />
+
+                {/* CATEGORIA */}
+                <View
+                  style={{
+                    marginBottom: 25,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={{ color: COLORS.primary }}>•••</Text>
+                  <CategoryDropdown
+                    categories={CATEGORY_ITEMS}
+                    selected={category}
+                    onSelect={setCategory}
+                  />
+                  <Text style={{ color: COLORS.primary }}>•••</Text>
+                </View>
+
+                {/* ⭐ INFO IN RIGA */}
+                <View style={styles.infoColumn}>
+                  <View style={styles.labelRow}>
+                    <Ionicons
+                      name="time-outline"
+                      size={22}
+                      color={COLORS.primary}
+                      style={{ marginBottom: 17 }}
+                    />
+
+                    <Text style={styles.label}>Preparazione:</Text>
+                    <Input
+                      placeholder="20 minuti"
+                      value={prepTime}
+                      onChangeText={setPrepTime}
+                      style={styles.infoInput}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.infoColumn}>
+                  <View style={styles.labelRow}>
+                    <Ionicons
+                      name="flame-outline"
+                      size={22}
+                      color={COLORS.primary}
+                      style={{ marginBottom: 17 }}
+                    />
+
+                    <Text style={styles.label}>Cottura:</Text>
+                    <Input
+                      placeholder="45 minuti"
+                      value={cookTime}
+                      onChangeText={setCookTime}
+                      style={styles.infoInput}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.infoColumn}>
+                  <View style={styles.labelRow}>
+                    <Ionicons
+                      name="people-outline"
+                      size={22}
+                      color={COLORS.primary}
+                      style={{ marginBottom: 17 }}
+                    />
+
+                    <Text style={styles.label}>Porzioni:</Text>
+                    <Input
+                      placeholder="4"
+                      value={servings}
+                      onChangeText={setServings}
+                      style={[styles.infoInput, { minWidth: 50 }]}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+
+                {/* ⭐ TAGS */}
+                <Text
+                  variant="heading"
+                  style={[styles.sectionTitle, { marginBottom: 20 }]}
+                >
+                  Tags
+                </Text>
+                <View style={styles.tagsContainer}>
+                  <Ionicons
+                    name="pricetag-outline" // ⭐ la più simile a un hashtag elegante
+                    size={20}
+                    color={COLORS.primary}
+                    style={{ marginBottom: 10 }}
+                  />
+                  <Input
+                    placeholder="Piatto Estivo"
+                    value={tagInput}
+                    onChangeText={setTagInput}
+                    onSubmitEditing={() => {
+                      if (tagInput.trim()) {
+                        setTags((prev) => [...prev, tagInput.trim()]);
+                        setTagInput("");
+                      }
+                    }}
+                    style={styles.tagInput}
+                  />
+
+                  <View style={styles.tagsList}>
+                    {tags.map((tag, i) => (
+                      <TouchableOpacity
+                        key={i}
+                        style={styles.tag}
+                        onPress={() =>
+                          setTags((prev) => prev.filter((t) => t !== tag))
+                        }
+                      >
+                        <Text bold style={styles.tagText}>
+                          #{tag} ✕
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* ⭐ NOTE */}
+                <View style={styles.notesInline}>
+                  <Text variant="heading" style={styles.sectionTitle}>
+                    Note e Curiosità
+                  </Text>
+
+                  <Input
+                    placeholder="Aggiungi qui info e curiosità sulla ricetta..."
+                    value={notesText}
+                    onChangeText={setNotesText}
+                    multiline
+                    style={styles.notesInput}
+                  />
+
+                  {notesText.length > 0 && (
+                    <TouchableOpacity
+                      style={[styles.deleteSmallButton, { top: 50 }]}
+                      onPress={() => setNotesText("")}
+                    >
+                      <Ionicons name="close" size={15} color="#cb0047" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* ============================================================
+             TABS
+             ============================================================ */}
+                <View style={styles.tabsContainer}>
+                  <TouchableOpacity
+                    onPress={() => setActiveTab("ingredienti")}
+                    style={[
+                      styles.tab,
+                      activeTab === "ingredienti" && styles.tabActive,
+                    ]}
+                  >
+                    <Text
+                      bold
+                      style={[
+                        styles.tabLabel,
+                        activeTab === "ingredienti" && styles.tabLabelActive,
+                      ]}
+                    >
+                      Ingredienti
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setActiveTab("procedimento")}
+                    style={[
+                      styles.tab,
+                      activeTab === "procedimento" && styles.tabActive,
+                    ]}
+                  >
+                    <Text
+                      bold
+                      style={[
+                        styles.tabLabel,
+                        activeTab === "procedimento" && styles.tabLabelActive,
+                      ]}
+                    >
+                      Procedimento
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* ============================================================
+                  INGREDIENTI — STILE APPLE NOTES
+               ============================================================ */}
+                {activeTab === "ingredienti" && (
+                  <View style={styles.sectionWrapper}>
+                    {/* ===========================
+                      FOTO OCR
+                    ============================ */}
+                    {ingredientsPhoto && cropSize && (
+                      <View style={{ width: "100%", marginBottom: 20 }}>
+                        <TouchableOpacity
+                          onPress={() => setIngredientsPhoto(null)}
+                          style={styles.deleteSmallButton}
                         >
-                          {/* HEADER GRUPPO */}
-                          <View
+                          <Ionicons name="close" size={15} color="#cb0047" />
+                        </TouchableOpacity>
+
+                        <View style={{ alignItems: "center" }}>
+                          <ExpoImage
+                            source={{ uri: ingredientsPhoto }}
                             style={{
-                              flexDirection: "row",
-                              alignItems: "center",
-                              justifyContent: "space-between",
+                              width: displayW,
+                              height: displayH,
+                              borderRadius: 12,
+                              backgroundColor: "#eee",
                             }}
+                            contentFit="cover"
+                            // ⭐ cover qui va bene perché l'immagine è già ritagliata e proporzionata
+                          />
+                        </View>
+                      </View>
+                    )}
+
+                    {noIngredients && (
+                      <View style={styles.emptyIngredientsWrapper}>
+                        <Text style={styles.emptyIngredientsText}>
+                          Nessun ingrediente ancora
+                        </Text>
+
+                        <Text style={styles.emptyIngredientsSub}>
+                          Tocca il pulsante in basso a destra per aggiungerne
+                          uno
+                        </Text>
+                        <Ionicons
+                          name="nutrition-outline"
+                          size={60}
+                          color={COLORS.textLight}
+                          style={{ marginTop: 10, opacity: 0.7 }}
+                        />
+                      </View>
+                    )}
+
+                    {/* ===========================
+                        LISTA INGREDIENTI
+                       ============================ */}
+                    {visibleItems.map((item) => {
+                      /* ===========================
+                             GRUPPO
+                        ============================ */
+                      if (item.type === "group") {
+                        const groupIngredients = ingredientsInGroup(item.id);
+
+                        return (
+                          <ImageBackground
+                            source={require("../../assets/images/ring.png")}
+                            resizeMode="cover"
+                            style={styles.groupCard}
                           >
-                            {/* CHECKBOX GRUPPO */}
-                            {groupingMode && (
-                              <TouchableOpacity
-                                onPress={() =>
-                                  toggleIngredientSelection(item.id)
-                                }
-                                style={styles.checkboxWrapper}
-                              >
-                                <Ionicons
-                                  name={
-                                    selectedIngredients.includes(item.id)
-                                      ? "checkbox"
-                                      : "square-outline"
-                                  }
-                                  size={22}
-                                  color={COLORS.secondary}
-                                />
-                              </TouchableOpacity>
-                            )}
-
-                            {/* TITOLO GRUPPO */}
                             <View
-                              style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                gap: 5,
-                                flex: 1,
-                              }}
+                              key={item.id}
+                              style={{ paddingLeft: 20, paddingRight: 10 }}
                             >
-                              <Input
-                                value={item.title}
-                                onChangeText={(t) =>
-                                  updateGroupTitle(item.id, t)
-                                }
-                                multiline
+                              {/* HEADER GRUPPO */}
+                              <View
                                 style={{
-                                  flex: 1,
-                                  fontSize: 16,
-                                  fontWeight: "600",
-                                  backgroundColor: "transparent",
-                                  marginLeft: 6,
-                                  textAlign: "center",
-                                }}
-                              />
-
-                              <TouchableOpacity
-                                onPress={() => toggleGroup(item.id)}
-                              >
-                                <Ionicons
-                                  name={
-                                    item.collapsed
-                                      ? "chevron-down"
-                                      : "chevron-up"
-                                  }
-                                  size={20}
-                                  color={COLORS.secondary}
-                                />
-                              </TouchableOpacity>
-                            </View>
-
-                            {/* ELLIPSIS */}
-                            {!groupingMode && (
-                              <TouchableOpacity
-                                onPress={() =>
-                                  setOpenActions(
-                                    openActions === item.id ? null : item.id,
-                                  )
-                                }
-                                style={[
-                                  styles.rowEllipsisBtn,
-                                  { marginRight: 15 },
-                                ]}
-                              >
-                                <Ionicons
-                                  name={
-                                    openActions === item.id
-                                      ? "close"
-                                      : "ellipsis-vertical"
-                                  }
-                                  size={20}
-                                  color={COLORS.secondary}
-                                />
-                              </TouchableOpacity>
-                            )}
-                          </View>
-
-                          {/* MENU GRUPPO */}
-                          {openActions === item.id && (
-                            <Animated.View
-                              entering={FadeInRight.duration(180).damping(18)}
-                              exiting={FadeOutLeft.duration(150)}
-                              style={[
-                                styles.ingredientActionsOverlay,
-                                {
-                                  marginLeft: 0,
-                                  marginRight: -40,
-                                  paddingRight: 40,
-                                },
-                              ]}
-                            >
-                              {/* ELIMINA */}
-                              <TouchableOpacity
-                                style={styles.ingredientActionBtn}
-                                onPress={() => {
-                                  removeGroup(item.id);
-                                  setOpenActions(null);
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 0,
                                 }}
                               >
-                                <Ionicons
-                                  name="trash-outline"
-                                  size={22}
-                                  color="#cb0047"
-                                />
-                                <Text
-                                  style={[
-                                    styles.ingredientActionLabel,
-                                    { color: "#cb0047" },
-                                  ]}
-                                >
-                                  Elimina
-                                </Text>
-                              </TouchableOpacity>
-
-                              <View style={styles.ingredientActionDivider} />
-
-                              {/* SU */}
-                              <TouchableOpacity
-                                style={styles.ingredientActionBtn}
-                                onPress={() => {
-                                  moveGroup(item.id, "up");
-                                  setOpenActions(null);
-                                }}
-                              >
-                                <Ionicons
-                                  name="chevron-up-outline"
-                                  size={22}
-                                  color={COLORS.secondary}
-                                />
-                                <Text style={styles.ingredientActionLabel}>
-                                  Su
-                                </Text>
-                              </TouchableOpacity>
-
-                              <View style={styles.ingredientActionDivider} />
-
-                              {/* GIÙ */}
-                              <TouchableOpacity
-                                style={styles.ingredientActionBtn}
-                                onPress={() => {
-                                  moveGroup(item.id, "down");
-                                  setOpenActions(null);
-                                }}
-                              >
-                                <Ionicons
-                                  name="chevron-down-outline"
-                                  size={22}
-                                  color={COLORS.secondary}
-                                />
-                                <Text style={styles.ingredientActionLabel}>
-                                  Giù
-                                </Text>
-                              </TouchableOpacity>
-
-                              <View style={styles.ingredientActionDivider} />
-
-                              {/* NUOVO INGREDIENTE */}
-                              <TouchableOpacity
-                                style={styles.ingredientActionBtn}
-                                onPress={() => {
-                                  addIngredientToGroup(item.id);
-                                  setOpenActions(null);
-                                }}
-                              >
-                                <Ionicons
-                                  name="add-circle-outline"
-                                  size={22}
-                                  color={COLORS.secondary}
-                                />
-                                <Text style={styles.ingredientActionLabel}>
-                                  Ingrediente
-                                </Text>
-                              </TouchableOpacity>
-                            </Animated.View>
-                          )}
-
-                          {/* RIASSUNTO SE COLLASSATO */}
-                          {item.collapsed && groupIngredients.length > 0 && (
-                            <Text
-                              style={{
-                                fontSize: 13,
-                                color: COLORS.secondary,
-                                marginVertical: 10,
-                                textAlign: "center",
-                              }}
-                            >
-                              {groupIngredients
-                                .map((ing) => {
-                                  const qty = ing.quantity
-                                    ? ` ${ing.quantity}`
-                                    : "";
-                                  const unit = ing.unit ? ` ${ing.unit}` : "";
-                                  return `${ing.name || "Ingrediente"}${qty}${unit}`;
-                                })
-                                .join(" · ")}
-                            </Text>
-                          )}
-
-                          {/* INGREDIENTI DEL GRUPPO */}
-                          {!item.collapsed &&
-                            groupIngredients.map((ing) => {
-                              const linkedRecipe = ing.linkedRecipeId
-                                ? recipes.find(
-                                    (r) => r.id === ing.linkedRecipeId,
-                                  )
-                                : null;
-
-                              return (
-                                <View key={ing.id} style={{ marginBottom: 5 }}>
-                                  <View
-                                    style={[
-                                      styles.ingredientRow,
-                                      groupingMode &&
-                                      selectedIngredients.includes(ing.id)
-                                        ? styles.ingredientSelected
-                                        : null,
-                                    ]}
+                                {/* ELLIPSIS */}
+                                {!groupingMode && (
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      setOpenActions(
+                                        openActions === item.id
+                                          ? null
+                                          : item.id,
+                                      )
+                                    }
+                                    style={[styles.rowEllipsisBtn]}
                                   >
-                                    {/* CHECKBOX */}
-                                    {groupingMode && (
+                                    <Ionicons
+                                      name="ellipsis-vertical"
+                                      size={20}
+                                      color={COLORS.secondary}
+                                      style={{
+                                        marginBottom: 0,
+                                        marginLeft: 0,
+                                      }}
+                                    />
+                                  </TouchableOpacity>
+                                )}
+
+                                {/* TITOLO GRUPPO */}
+                                <View
+                                  style={{
+                                    flexDirection: "row",
+                                    alignItems: "flex-start",
+                                    justifyContent: "flex-start",
+                                    gap: 2,
+                                    flex: 1,
+                                  }}
+                                >
+                                  <Input
+                                    value={
+                                      item.collapsed
+                                        ? `${item.title} (${groupIngredients.length})`
+                                        : item.title
+                                    }
+                                    onChangeText={(t) =>
+                                      updateGroupTitle(item.id, t)
+                                    }
+                                    multiline
+                                    style={{
+                                      flex: 1,
+                                      fontSize: 16,
+                                      fontFamily: "Outfit-SemiBold",
+                                      color: COLORS.secondary,
+                                      backgroundColor: "transparent",
+                                      textAlign: "center",
+                                      borderColor: "white",
+                                    }}
+                                  />
+
+                                  <TouchableOpacity
+                                    onPress={() => toggleGroup(item.id)}
+                                  >
+                                    <Ionicons
+                                      name={
+                                        item.collapsed
+                                          ? "caret-down-outline"
+                                          : "caret-up-outline"
+                                      }
+                                      size={20}
+                                      color={COLORS.secondary}
+                                      style={{ marginTop: 20 }}
+                                    />
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+
+                              {/* MENU GRUPPO */}
+                              {openActions === item.id && (
+                                <Animated.View
+                                  entering={FadeInLeft.duration(180).damping(
+                                    18,
+                                  )}
+                                  exiting={FadeOutRight.duration(150)}
+                                  style={styles.groupActionsOverlay}
+                                >
+                                  {/* X CHIUSURA */}
+                                  <TouchableOpacity
+                                    onPress={() => setOpenActions(null)}
+                                    style={styles.groupActionsCloseBtn}
+                                  >
+                                    <Ionicons
+                                      name="close"
+                                      size={22}
+                                      color={COLORS.secondary}
+                                    />
+                                  </TouchableOpacity>
+
+                                  {/* LOGICA: orizzontale se collassato o <=1 ingredienti */}
+                                  {item.collapsed ||
+                                  groupIngredients.length <= 1 ? (
+                                    /* ⭐ LAYOUT ORIZZONTALE */
+                                    <View
+                                      style={{
+                                        flexDirection: "row",
+                                        justifyContent: "center",
+                                        alignItems: "center",
+                                        gap: 5,
+                                        marginLeft: 40,
+                                      }}
+                                    >
+                                      {/* SU */}
                                       <TouchableOpacity
-                                        onPress={() =>
-                                          toggleIngredientSelection(ing.id)
-                                        }
-                                        style={styles.checkboxWrapper}
+                                        style={[
+                                          styles.groupActionBtn,
+                                          { width: 50 },
+                                        ]}
+                                        onPress={() => {
+                                          moveGroup(item.id, "up");
+                                          setOpenActions(null);
+                                        }}
                                       >
                                         <Ionicons
-                                          name={
-                                            selectedIngredients.includes(ing.id)
-                                              ? "checkbox"
-                                              : "square-outline"
-                                          }
+                                          name="caret-up-outline"
                                           size={22}
                                           color={COLORS.secondary}
                                         />
+                                        <Text
+                                          style={styles.ingredientActionLabel}
+                                        >
+                                          Su
+                                        </Text>
                                       </TouchableOpacity>
-                                    )}
 
-                                    {/* INPUT NOME */}
-                                    <Input
-                                      value={ing.name}
-                                      onChangeText={(t) => {
-                                        setActiveSuggestionFor(ing.id);
+                                      <View
+                                        style={styles.ingredientActionDivider}
+                                      />
 
-                                        const updated = applyNutrition({
-                                          ...ing,
-                                          name: t,
-                                        });
-
-                                        updateIngredientObject(ing.id, updated);
-
-                                        if (t.length > 1) {
-                                          const results = fuse
-                                            .search(t)
-                                            .map((r) => r.item);
-                                          setSuggestions(results.slice(0, 20));
-                                        } else {
-                                          setSuggestions([]);
-                                        }
-                                      }}
-                                      multiline
-                                      placeholder="Ingrediente"
-                                      style={{
-                                        borderColor: "white",
-                                        backgroundColor: "#fff",
-                                      }}
-                                    />
-
-                                    {/* INPUT QUANTITÀ */}
-                                    <Input
-                                      value={String(ing.quantity ?? "")}
-                                      onChangeText={(t) => {
-                                        const value = t === "" ? "" : Number(t);
-
-                                        if (ing.type !== "ingredient") {
-                                          updateIngredient(
-                                            item.id,
-                                            "quantity",
-                                            value,
-                                          );
-                                          return;
-                                        }
-
-                                        const key = ing.name
-                                          .trim()
-                                          .toLowerCase();
-                                        const data = nutritionIndex[key];
-
-                                        if (!data) {
-                                          updateIngredient(
-                                            ing.id,
-                                            "quantity",
-                                            value,
-                                          );
-                                          return;
-                                        }
-
-                                        updateIngredientObject(ing.id, {
-                                          ...ing,
-                                          quantity: value,
-                                          kcal:
-                                            (data.kcal * (value || 0)) / 100,
-                                          carbs:
-                                            (data.carbs * (value || 0)) / 100,
-                                          protein:
-                                            (data.protein * (value || 0)) / 100,
-                                          fat: (data.fat * (value || 0)) / 100,
-                                        });
-                                      }}
-                                      placeholder="0"
-                                      multiline
-                                      style={{
-                                        width: 70,
-                                        textAlign: "center",
-                                        borderColor: "white",
-                                      }}
-                                    />
-
-                                    {/* INPUT UNITÀ */}
-                                    <Input
-                                      value={ing.unit}
-                                      onChangeText={(t) =>
-                                        updateIngredient(ing.id, "unit", t)
-                                      }
-                                      placeholder="g"
-                                      multiline
-                                      style={{
-                                        width: 60,
-                                        textAlign: "center",
-                                        borderColor: "white",
-                                      }}
-                                    />
-
-                                    {/* ELLIPSIS */}
-                                    {!groupingMode && (
+                                      {/* GIÙ */}
                                       <TouchableOpacity
-                                        onPress={() =>
-                                          setOpenActions(
-                                            openActions === ing.id
-                                              ? null
-                                              : ing.id,
-                                          )
-                                        }
                                         style={[
-                                          styles.rowEllipsisBtn,
-                                          { position: "absolute", right: 15 },
+                                          styles.groupActionBtn,
+                                          { width: 50 },
                                         ]}
+                                        onPress={() => {
+                                          moveGroup(item.id, "down");
+                                          setOpenActions(null);
+                                        }}
                                       >
                                         <Ionicons
-                                          name={
-                                            openActions === ing.id
-                                              ? "close"
-                                              : "ellipsis-vertical"
-                                          }
-                                          size={20}
+                                          name="caret-down-outline"
+                                          size={22}
                                           color={COLORS.secondary}
                                         />
+                                        <Text
+                                          style={styles.ingredientActionLabel}
+                                        >
+                                          Giù
+                                        </Text>
                                       </TouchableOpacity>
-                                    )}
-                                  </View>
-
-                                  {/* SUGGERIMENTI SOLO PER QUESTO INGREDIENTE */}
-                                  {activeSuggestionFor === ing.id &&
-                                    suggestions.length > 0 && (
-                                      <View
-                                        style={{
-                                          backgroundColor: "#fff",
-                                          borderRadius: 6,
-                                          marginTop: -10,
-                                          marginHorizontal: 10,
-                                          paddingVertical: 4,
-                                          elevation: 3,
-                                        }}
-                                      >
-                                        {suggestions.map((s) => (
-                                          <TouchableOpacity
-                                            key={s.name}
-                                            onPress={() => {
-                                              const data =
-                                                nutritionIndex[s.name];
-
-                                              if (ing.type !== "ingredient")
-                                                return;
-
-                                              const q =
-                                                Number(ing.quantity) || 0;
-
-                                              updateIngredientObject(item.id, {
-                                                ...ing,
-                                                name: s.name,
-                                                kcal: (s.kcal * q) / 100,
-                                                carbs: (s.carbs * q) / 100,
-                                                protein: (s.protein * q) / 100,
-                                                fat: (s.fat * q) / 100,
-                                              });
-
-                                              setSuggestions([]);
-                                              setActiveSuggestionFor(null);
-                                            }}
-                                            style={{ padding: 8 }}
-                                          >
-                                            <Text>{s.name}</Text>
-                                          </TouchableOpacity>
-                                        ))}
-                                      </View>
-                                    )}
-
-                                  {/* SPILLETTA */}
-                                  {linkedRecipe && (
-                                    <TouchableOpacity
-                                      onPress={() =>
-                                        router.push(
-                                          `/recipe/${linkedRecipe.id}`,
-                                        )
-                                      }
-                                      style={{
-                                        flexDirection: "row",
-                                        alignItems: "center",
-                                        alignSelf: "flex-start",
-                                        backgroundColor: "#eef3ff",
-                                        paddingHorizontal: 10,
-                                        paddingVertical: 0,
-                                        borderRadius: 12,
-                                        marginTop: -40,
-                                        marginLeft: 15,
-                                      }}
-                                    >
-                                      <Ionicons
-                                        name="link-outline"
-                                        size={16}
-                                        color={COLORS.secondary}
-                                      />
-                                      <Text
-                                        style={{
-                                          marginLeft: 6,
-                                          color: COLORS.secondary,
-                                          fontSize: 11,
-                                          fontWeight: "500",
-                                        }}
-                                      >
-                                        {linkedRecipe.title}
-                                      </Text>
-                                    </TouchableOpacity>
-                                  )}
-
-                                  {/* MENU INGREDIENTE */}
-                                  {openActions === ing.id && (
-                                    <Animated.View
-                                      entering={FadeInRight.duration(
-                                        180,
-                                      ).damping(18)}
-                                      exiting={FadeOutLeft.duration(150)}
-                                      style={[
-                                        styles.ingredientActionsOverlay,
-                                        {
-                                          marginBottom: 10,
-                                          marginLeft: 10,
-                                          marginRight: 15,
-                                        },
-                                      ]}
-                                    >
-                                      {/* COLLEGA */}
-                                      {!ing.linkedRecipeId ? (
-                                        <TouchableOpacity
-                                          style={styles.ingredientActionBtn}
-                                          onPress={() => {
-                                            const realIndex =
-                                              ingredients.findIndex(
-                                                (i) => i.id === ing.id,
-                                              );
-                                            if (realIndex !== -1)
-                                              openRecipePicker(realIndex);
-                                            setOpenActions(null);
-                                          }}
-                                        >
-                                          <Ionicons
-                                            name="link-outline"
-                                            size={22}
-                                            color={COLORS.secondary}
-                                          />
-                                          <Text
-                                            style={styles.ingredientActionLabel}
-                                          >
-                                            Collega
-                                          </Text>
-                                        </TouchableOpacity>
-                                      ) : (
-                                        <TouchableOpacity
-                                          style={styles.ingredientActionBtn}
-                                          onPress={() => {
-                                            updateIngredientField(
-                                              ing.id,
-                                              "linkedRecipeId",
-                                              null,
-                                            );
-                                            setOpenActions(null);
-                                          }}
-                                        >
-                                          <Ionicons
-                                            name="unlink-outline"
-                                            size={22}
-                                            color="#cb0047"
-                                          />
-                                          <Text
-                                            style={[
-                                              styles.ingredientActionLabel,
-                                              { color: "#cb0047" },
-                                            ]}
-                                          >
-                                            Rimuovi link
-                                          </Text>
-                                        </TouchableOpacity>
-                                      )}
 
                                       <View
                                         style={styles.ingredientActionDivider}
@@ -1743,9 +1652,9 @@ export default function EditRecipeScreen() {
 
                                       {/* ELIMINA */}
                                       <TouchableOpacity
-                                        style={styles.ingredientActionBtn}
+                                        style={styles.groupActionBtn}
                                         onPress={() => {
-                                          removeIngredient(ing.id);
+                                          removeGroup(item.id);
                                           setOpenActions(null);
                                         }}
                                       >
@@ -1763,335 +1672,886 @@ export default function EditRecipeScreen() {
                                           Elimina
                                         </Text>
                                       </TouchableOpacity>
-
                                       <View
                                         style={styles.ingredientActionDivider}
                                       />
 
-                                      {/* SU */}
+                                      {/* AGGIUNGI */}
                                       <TouchableOpacity
-                                        style={styles.ingredientActionBtn}
+                                        style={styles.groupActionBtn}
                                         onPress={() => {
-                                          moveIngredientUp(ing.id);
+                                          addIngredientToGroup(item.id);
                                           setOpenActions(null);
                                         }}
                                       >
                                         <Ionicons
-                                          name="chevron-up-outline"
+                                          name="add-circle-outline"
                                           size={22}
                                           color={COLORS.secondary}
                                         />
                                         <Text
                                           style={styles.ingredientActionLabel}
                                         >
-                                          Su
+                                          Ingrediente
                                         </Text>
                                       </TouchableOpacity>
+                                    </View>
+                                  ) : (
+                                    /* ⭐ LAYOUT A DUE RIGHE */
+                                    <>
+                                      {/* RIGA 1 */}
+                                      <View style={styles.groupActionsRow}>
+                                        <TouchableOpacity
+                                          style={styles.groupActionBtn}
+                                          onPress={() => {
+                                            moveGroup(item.id, "up");
+                                            setOpenActions(null);
+                                          }}
+                                        >
+                                          <Ionicons
+                                            name="caret-up-outline"
+                                            size={22}
+                                            color={COLORS.secondary}
+                                          />
+                                          <Text
+                                            style={styles.ingredientActionLabel}
+                                          >
+                                            Su
+                                          </Text>
+                                        </TouchableOpacity>
 
+                                        <TouchableOpacity
+                                          style={styles.groupActionBtn}
+                                          onPress={() => {
+                                            moveGroup(item.id, "down");
+                                            setOpenActions(null);
+                                          }}
+                                        >
+                                          <Ionicons
+                                            name="caret-down-outline"
+                                            size={22}
+                                            color={COLORS.secondary}
+                                          />
+                                          <Text
+                                            style={styles.ingredientActionLabel}
+                                          >
+                                            Giù
+                                          </Text>
+                                        </TouchableOpacity>
+                                      </View>
+
+                                      {/* DIVISORE ORIZZONTALE */}
                                       <View
-                                        style={styles.ingredientActionDivider}
+                                        style={styles.groupDividerHorizontal}
                                       />
 
-                                      {/* GIÙ */}
-                                      <TouchableOpacity
-                                        style={styles.ingredientActionBtn}
-                                        onPress={() => {
-                                          moveIngredientDown(ing.id);
-                                          setOpenActions(null);
-                                        }}
-                                      >
-                                        <Ionicons
-                                          name="chevron-down-outline"
-                                          size={22}
-                                          color={COLORS.secondary}
-                                        />
-                                        <Text
-                                          style={styles.ingredientActionLabel}
+                                      {/* RIGA 2 */}
+                                      <View style={styles.groupActionsRow}>
+                                        <TouchableOpacity
+                                          style={styles.groupActionBtn}
+                                          onPress={() => {
+                                            removeGroup(item.id);
+                                            setOpenActions(null);
+                                          }}
                                         >
-                                          Giù
-                                        </Text>
-                                      </TouchableOpacity>
-                                    </Animated.View>
+                                          <Ionicons
+                                            name="trash-outline"
+                                            size={22}
+                                            color="#cb0047"
+                                          />
+                                          <Text
+                                            style={[
+                                              styles.ingredientActionLabel,
+                                              { color: "#cb0047" },
+                                            ]}
+                                          >
+                                            Elimina
+                                          </Text>
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                          style={styles.groupActionBtn}
+                                          onPress={() => {
+                                            addIngredientToGroup(item.id);
+                                            setOpenActions(null);
+                                          }}
+                                        >
+                                          <Ionicons
+                                            name="add-circle-outline"
+                                            size={22}
+                                            color={COLORS.secondary}
+                                          />
+                                          <Text
+                                            style={styles.ingredientActionLabel}
+                                          >
+                                            Ingrediente
+                                          </Text>
+                                        </TouchableOpacity>
+                                      </View>
+
+                                      {/* DIVISORE VERTICALE */}
+                                      <View
+                                        style={styles.groupDividerVertical}
+                                      />
+                                    </>
                                   )}
-                                </View>
-                              );
-                            })}
-                        </View>
-                      );
-                    }
+                                </Animated.View>
+                              )}
 
-                    /* ===========================
+                              {/* INGREDIENTI DEL GRUPPO */}
+                              {!item.collapsed &&
+                                groupIngredients.map((ing) => {
+                                  const linkedRecipe = ing.linkedRecipeId
+                                    ? recipes.find(
+                                        (r) => r.id === ing.linkedRecipeId,
+                                      )
+                                    : null;
+
+                                  return (
+                                    <View
+                                      key={ing.id}
+                                      style={{ marginBottom: 5 }}
+                                    >
+                                      <View
+                                        style={[
+                                          styles.ingredientRow,
+                                          groupingMode &&
+                                          selectedIngredients.includes(ing.id)
+                                            ? styles.ingredientSelected
+                                            : null,
+                                        ]}
+                                      >
+                                        {/* CHECKBOX */}
+                                        {groupingMode && (
+                                          <TouchableOpacity
+                                            onPress={() =>
+                                              toggleIngredientSelection(ing.id)
+                                            }
+                                            style={styles.checkboxWrapper}
+                                          >
+                                            <Ionicons
+                                              name={
+                                                selectedIngredients.includes(
+                                                  ing.id,
+                                                )
+                                                  ? "checkbox"
+                                                  : "square-outline"
+                                              }
+                                              size={22}
+                                              color={COLORS.secondary}
+                                            />
+                                          </TouchableOpacity>
+                                        )}
+
+                                        {/* INPUT NOME + SUGGERIMENTI */}
+                                        <View style={{ flex: 1 }}>
+                                          <Input
+                                            value={ing.name}
+                                            onChangeText={(t) => {
+                                              setActiveSuggestionFor(ing.id);
+
+                                              const updated = applyNutrition({
+                                                ...ing,
+                                                name: t,
+                                              });
+
+                                              updateIngredientObject(
+                                                ing.id,
+                                                updated,
+                                              );
+
+                                              if (t.length > 1) {
+                                                const results = fuse
+                                                  .search(t)
+                                                  .map((r) => r.item);
+                                                setSuggestions(
+                                                  results.slice(0, 20),
+                                                );
+                                              } else {
+                                                setSuggestions([]);
+                                              }
+                                            }}
+                                            placeholder="Ingrediente"
+                                            multiline
+                                            style={{ borderColor: "white" }}
+                                          />
+                                        </View>
+
+                                        {/* INPUT QUANTITÀ */}
+                                        <Input
+                                          value={String(ing.quantity ?? "")}
+                                          onChangeText={(t) => {
+                                            const value =
+                                              t === "" ? "" : Number(t);
+
+                                            if (ing.type !== "ingredient") {
+                                              updateIngredient(
+                                                item.id,
+                                                "quantity",
+                                                value,
+                                              );
+                                              return;
+                                            }
+
+                                            const key = ing.name
+                                              .trim()
+                                              .toLowerCase();
+                                            const data = nutritionIndex[key];
+
+                                            if (!data) {
+                                              updateIngredient(
+                                                ing.id,
+                                                "quantity",
+                                                value,
+                                              );
+                                              return;
+                                            }
+
+                                            updateIngredientObject(ing.id, {
+                                              ...ing,
+                                              quantity: value,
+                                              kcal:
+                                                (data.kcal * (value || 0)) /
+                                                100,
+                                              carbs:
+                                                (data.carbs * (value || 0)) /
+                                                100,
+                                              protein:
+                                                (data.protein * (value || 0)) /
+                                                100,
+                                              fat:
+                                                (data.fat * (value || 0)) / 100,
+                                            });
+                                          }}
+                                          placeholder="0"
+                                          multiline
+                                          style={{
+                                            width: 80,
+                                            textAlign: "center",
+                                            borderColor: "white",
+                                          }}
+                                        />
+
+                                        {/* INPUT UNITÀ */}
+                                        <Input
+                                          value={ing.unit}
+                                          onChangeText={(t) =>
+                                            updateIngredient(ing.id, "unit", t)
+                                          }
+                                          placeholder="g"
+                                          multiline
+                                          style={{
+                                            width: 100,
+                                            textAlign: "center",
+                                            borderColor: "white",
+                                          }}
+                                        />
+
+                                        {/* ELLIPSIS */}
+                                        {!groupingMode && (
+                                          <TouchableOpacity
+                                            onPress={() =>
+                                              setOpenActions(
+                                                openActions === ing.id
+                                                  ? null
+                                                  : ing.id,
+                                              )
+                                            }
+                                            style={styles.rowEllipsisBtn}
+                                          >
+                                            <Ionicons
+                                              name={
+                                                openActions === ing.id
+                                                  ? "close"
+                                                  : "ellipsis-vertical"
+                                              }
+                                              size={20}
+                                              color={COLORS.secondary}
+                                            />
+                                          </TouchableOpacity>
+                                        )}
+                                      </View>
+
+                                      <View
+                                        style={{
+                                          height: 1,
+                                          backgroundColor: "#f1f1f1",
+                                        }}
+                                      ></View>
+
+                                      {/* SUGGERIMENTI SOLO PER QUESTO INGREDIENTE */}
+                                      {activeSuggestionFor === ing.id &&
+                                        suggestions.length > 0 && (
+                                          <View
+                                            style={{
+                                              backgroundColor: "#fff",
+                                              borderRadius: 6,
+                                              marginTop: -10,
+                                              marginHorizontal: 10,
+                                              paddingVertical: 4,
+                                              elevation: 3,
+                                            }}
+                                          >
+                                            {suggestions.map((s) => (
+                                              <TouchableOpacity
+                                                key={s.name}
+                                                onPress={() => {
+                                                  const data =
+                                                    nutritionIndex[s.name];
+
+                                                  if (ing.type !== "ingredient")
+                                                    return;
+
+                                                  const q =
+                                                    Number(ing.quantity) || 0;
+
+                                                  updateIngredientObject(
+                                                    ing.id,
+                                                    {
+                                                      ...ing,
+                                                      name: s.name,
+                                                      kcal: (s.kcal * q) / 100,
+                                                      carbs:
+                                                        (s.carbs * q) / 100,
+                                                      protein:
+                                                        (s.protein * q) / 100,
+                                                      fat: (s.fat * q) / 100,
+                                                    },
+                                                  );
+
+                                                  setSuggestions([]);
+                                                  setActiveSuggestionFor(null);
+                                                }}
+                                                style={{ padding: 8 }}
+                                              >
+                                                <Text>{s.name}</Text>
+                                              </TouchableOpacity>
+                                            ))}
+                                          </View>
+                                        )}
+
+                                      {/* SPILLETTA */}
+                                      {linkedRecipe && (
+                                        <TouchableOpacity
+                                          onPress={() =>
+                                            router.push(
+                                              `/recipe/${linkedRecipe.id}`,
+                                            )
+                                          }
+                                          style={{
+                                            flexDirection: "row",
+                                            alignItems: "center",
+                                            alignSelf: "flex-start",
+                                            backgroundColor: "#eef3ff",
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 0,
+                                            borderRadius: 12,
+                                            marginTop: -20,
+                                            marginLeft: 30,
+                                            marginBottom: 10,
+                                          }}
+                                        >
+                                          <Ionicons
+                                            name="link-outline"
+                                            size={16}
+                                            color={COLORS.primary}
+                                          />
+                                          <Text
+                                            style={{
+                                              marginLeft: 6,
+                                              color: COLORS.primary,
+                                              fontSize: 11,
+                                              fontWeight: "500",
+                                            }}
+                                          >
+                                            {linkedRecipe.title}
+                                          </Text>
+                                        </TouchableOpacity>
+                                      )}
+
+                                      {/* MENU INGREDIENTE */}
+                                      {openActions === ing.id && (
+                                        <Animated.View
+                                          entering={FadeInRight.duration(
+                                            180,
+                                          ).damping(18)}
+                                          exiting={FadeOutLeft.duration(150)}
+                                          style={[
+                                            styles.ingredientActionsOverlay,
+                                            {
+                                              marginLeft: 20,
+                                              marginBottom: 5,
+                                            },
+                                          ]}
+                                        >
+                                          {/* COLLEGA */}
+                                          {!ing.linkedRecipeId ? (
+                                            <TouchableOpacity
+                                              style={styles.ingredientActionBtn}
+                                              onPress={() => {
+                                                const realIndex =
+                                                  ingredients.findIndex(
+                                                    (i) => i.id === ing.id,
+                                                  );
+                                                if (realIndex !== -1)
+                                                  openRecipePicker(realIndex);
+                                                setOpenActions(null);
+                                              }}
+                                            >
+                                              <Ionicons
+                                                name="link-outline"
+                                                size={20}
+                                                color={COLORS.secondary}
+                                              />
+                                              <Text
+                                                style={
+                                                  styles.ingredientActionLabel
+                                                }
+                                              >
+                                                Collega
+                                              </Text>
+                                            </TouchableOpacity>
+                                          ) : (
+                                            <TouchableOpacity
+                                              style={styles.ingredientActionBtn}
+                                              onPress={() => {
+                                                updateIngredientField(
+                                                  ing.id,
+                                                  "linkedRecipeId",
+                                                  null,
+                                                );
+                                                setOpenActions(null);
+                                              }}
+                                            >
+                                              <Ionicons
+                                                name="unlink-outline"
+                                                size={20}
+                                                color="#cb0047"
+                                              />
+                                              <Text
+                                                style={[
+                                                  styles.ingredientActionLabel,
+                                                  { color: "#cb0047" },
+                                                ]}
+                                              >
+                                                Rimuovi link
+                                              </Text>
+                                            </TouchableOpacity>
+                                          )}
+
+                                          <View
+                                            style={
+                                              styles.ingredientActionDivider
+                                            }
+                                          />
+
+                                          {/* ELIMINA */}
+                                          <TouchableOpacity
+                                            style={styles.ingredientActionBtn}
+                                            onPress={() => {
+                                              removeIngredient(ing.id);
+                                              setOpenActions(null);
+                                            }}
+                                          >
+                                            <Ionicons
+                                              name="trash-outline"
+                                              size={20}
+                                              color="#cb0047"
+                                            />
+                                            <Text
+                                              style={[
+                                                styles.ingredientActionLabel,
+                                                { color: "#cb0047" },
+                                              ]}
+                                            >
+                                              Elimina
+                                            </Text>
+                                          </TouchableOpacity>
+
+                                          <View
+                                            style={
+                                              styles.ingredientActionDivider
+                                            }
+                                          />
+
+                                          {/* SU */}
+                                          <TouchableOpacity
+                                            style={styles.ingredientActionBtn}
+                                            onPress={() => {
+                                              moveIngredientUp(ing.id);
+                                              setOpenActions(null);
+                                            }}
+                                          >
+                                            <Ionicons
+                                              name="caret-up-outline"
+                                              size={20}
+                                              color={COLORS.secondary}
+                                            />
+                                            <Text
+                                              style={
+                                                styles.ingredientActionLabel
+                                              }
+                                            >
+                                              Su
+                                            </Text>
+                                          </TouchableOpacity>
+
+                                          <View
+                                            style={
+                                              styles.ingredientActionDivider
+                                            }
+                                          />
+
+                                          {/* GIÙ */}
+                                          <TouchableOpacity
+                                            style={styles.ingredientActionBtn}
+                                            onPress={() => {
+                                              moveIngredientDown(ing.id);
+                                              setOpenActions(null);
+                                            }}
+                                          >
+                                            <Ionicons
+                                              name="caret-down-outline"
+                                              size={20}
+                                              color={COLORS.secondary}
+                                            />
+                                            <Text
+                                              style={
+                                                styles.ingredientActionLabel
+                                              }
+                                            >
+                                              Giù
+                                            </Text>
+                                          </TouchableOpacity>
+                                        </Animated.View>
+                                      )}
+                                    </View>
+                                  );
+                                })}
+                            </View>
+                          </ImageBackground>
+                        );
+                      }
+
+                      /* ===========================
                        INGREDIENTE LIBERO
                       ============================ */
-                    if (item.type === "ingredient") {
-                      const linkedRecipe = item.linkedRecipeId
-                        ? recipes.find((r) => r.id === item.linkedRecipeId)
-                        : null;
+                      if (item.type === "ingredient") {
+                        const linkedRecipe = item.linkedRecipeId
+                          ? recipes.find((r) => r.id === item.linkedRecipeId)
+                          : null;
 
-                      return (
-                        <View key={item.id} style={{ marginBottom: 14 }}>
+                        return (
                           <View
-                            style={[
-                              styles.ingredientRow,
-                              groupingMode &&
-                              selectedIngredients.includes(item.id)
-                                ? styles.ingredientSelected
-                                : null,
-                            ]}
+                            key={item.id}
+                            style={{
+                              paddingTop: 10,
+                              backgroundColor: "white",
+                              justifyContent: "center",
+                              marginLeft: 0,
+                              marginRight: -10,
+                            }}
                           >
-                            {/* CHECKBOX */}
-                            {groupingMode && (
-                              <TouchableOpacity
-                                onPress={() =>
-                                  toggleIngredientSelection(item.id)
-                                }
-                                style={styles.checkboxWrapper}
-                              >
-                                <Ionicons
-                                  name={
-                                    selectedIngredients.includes(item.id)
-                                      ? "checkbox"
-                                      : "square-outline"
-                                  }
-                                  size={22}
-                                  color={COLORS.secondary}
-                                />
-                              </TouchableOpacity>
-                            )}
-
-                            {/* INPUT NOME */}
-                            <View style={{ flex: 1 }}>
-                              <Input
-                                value={item.name}
-                                onChangeText={(t) => {
-                                  setActiveSuggestionFor(item.id);
-
-                                  const updated = applyNutrition({
-                                    ...item,
-                                    name: t,
-                                  });
-
-                                  updateIngredientObject(item.id, updated);
-
-                                  if (t.length > 1) {
-                                    const results = fuse
-                                      .search(t)
-                                      .map((r) => r.item);
-                                    setSuggestions(results.slice(0, 20));
-                                  } else {
-                                    setSuggestions([]);
-                                  }
-                                }}
-                                placeholder="Ingrediente"
-                                multiline
-                                style={{ borderColor: "white" }}
-                              />
-                            </View>
-
-                            {/* INPUT QUANTITÀ */}
-                            <Input
-                              value={String(item.quantity ?? "")}
-                              onChangeText={(t) => {
-                                const value = t === "" ? "" : Number(t);
-
-                                if (item.type !== "ingredient") {
-                                  return;
-                                }
-
-                                // da qui in poi item è IngredientFlat
-                                const key = item.name.trim().toLowerCase();
-                                const data = nutritionIndex[key];
-
-                                if (!data) {
-                                  updateIngredient(item.id, "quantity", value);
-                                  return;
-                                }
-
-                                updateIngredientObject(item.id, {
-                                  ...item,
-                                  quantity: value,
-                                  kcal: (data.kcal * (value || 0)) / 100,
-                                  carbs: (data.carbs * (value || 0)) / 100,
-                                  protein: (data.protein * (value || 0)) / 100,
-                                  fat: (data.fat * (value || 0)) / 100,
-                                });
-                              }}
-                              placeholder="0"
-                              multiline
-                              style={{
-                                width: 70,
-                                textAlign: "center",
-                                borderColor: "white",
-                              }}
-                            />
-
-                            {/* INPUT UNITÀ */}
-                            <Input
-                              value={item.unit}
-                              onChangeText={(t) =>
-                                updateIngredient(item.id, "unit", t)
-                              }
-                              placeholder="g"
-                              multiline
-                              style={{
-                                width: 60,
-                                textAlign: "center",
-                                borderColor: "white",
-                              }}
-                            />
-
-                            {/* ELLIPSIS */}
-                            {!groupingMode && (
-                              <TouchableOpacity
-                                onPress={() =>
-                                  setOpenActions(
-                                    openActions === item.id ? null : item.id,
-                                  )
-                                }
-                                style={styles.rowEllipsisBtn}
-                              >
-                                <Ionicons
-                                  name={
-                                    openActions === item.id
-                                      ? "close"
-                                      : "ellipsis-vertical"
-                                  }
-                                  size={20}
-                                  color={COLORS.secondary}
-                                />
-                              </TouchableOpacity>
-                            )}
-                          </View>
-                          {/* ⭐ SUGGERIMENTI IDENTICI AD ADD */}
-                          {activeSuggestionFor === item.id &&
-                            suggestions.length > 0 && (
-                              <View
-                                style={{
-                                  backgroundColor: "#fff",
-                                  borderRadius: 6,
-                                  marginTop: -10,
-                                  paddingVertical: 4,
-                                  elevation: 3,
-                                  marginHorizontal: 10,
-                                }}
-                              >
-                                {suggestions.map((s) => (
-                                  <TouchableOpacity
-                                    key={s.name}
-                                    onPress={() => {
-                                      const data = nutritionIndex[s.name];
-
-                                      if (item.type !== "ingredient") return;
-
-                                      const q = Number(item.quantity) || 0;
-
-                                      updateIngredientObject(item.id, {
-                                        ...item,
-                                        name: s.name,
-                                        kcal: (s.kcal * q) / 100,
-                                        carbs: (s.carbs * q) / 100,
-                                        protein: (s.protein * q) / 100,
-                                        fat: (s.fat * q) / 100,
-                                      });
-
-                                      setSuggestions([]);
-                                      setActiveSuggestionFor(null);
-                                    }}
-                                    style={{ padding: 8 }}
-                                  >
-                                    <Text>{s.name}</Text>
-                                  </TouchableOpacity>
-                                ))}
-                              </View>
-                            )}
-
-                          {/* SPILLETTA */}
-                          {linkedRecipe && (
-                            <TouchableOpacity
-                              onPress={() =>
-                                router.push(`/recipe/${linkedRecipe.id}`)
-                              }
-                              style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                alignSelf: "flex-start",
-                                backgroundColor: "#eef3ff",
-                                paddingHorizontal: 10,
-                                paddingVertical: 0,
-                                borderRadius: 12,
-                                marginTop: -40,
-                                marginLeft: 15,
-                              }}
-                            >
-                              <Ionicons
-                                name="link-outline"
-                                size={16}
-                                color={COLORS.secondary}
-                              />
-                              <Text
-                                style={{
-                                  marginLeft: 6,
-                                  color: COLORS.secondary,
-                                  fontSize: 11,
-                                  fontWeight: "500",
-                                }}
-                              >
-                                {linkedRecipe.title}
-                              </Text>
-                            </TouchableOpacity>
-                          )}
-
-                          {/* MENU INGREDIENTE */}
-                          {openActions === item.id && (
-                            <Animated.View
-                              entering={FadeInRight.duration(180).damping(18)}
-                              exiting={FadeOutLeft.duration(150)}
+                            <View
                               style={[
-                                styles.ingredientActionsOverlay,
-                                {
-                                  marginBottom: 10,
-                                  marginLeft: 10,
-                                  marginRight: 15,
-                                },
+                                styles.ingredientRow,
+                                groupingMode &&
+                                selectedIngredients.includes(item.id)
+                                  ? styles.ingredientSelected
+                                  : null,
                               ]}
                             >
-                              {/* COLLEGA */}
-                              {!item.linkedRecipeId ? (
+                              {/* CHECKBOX */}
+                              {groupingMode && (
                                 <TouchableOpacity
-                                  style={styles.ingredientActionBtn}
-                                  onPress={() => {
-                                    const realIndex = ingredients.findIndex(
-                                      (i) => i.id === item.id,
-                                    );
-                                    if (realIndex !== -1)
-                                      openRecipePicker(realIndex);
-                                    setOpenActions(null);
-                                  }}
+                                  onPress={() =>
+                                    toggleIngredientSelection(item.id)
+                                  }
+                                  style={styles.checkboxWrapper}
                                 >
                                   <Ionicons
-                                    name="link-outline"
+                                    name={
+                                      selectedIngredients.includes(item.id)
+                                        ? "checkbox"
+                                        : "square-outline"
+                                    }
                                     size={22}
                                     color={COLORS.secondary}
                                   />
-                                  <Text style={styles.ingredientActionLabel}>
-                                    Collega
-                                  </Text>
                                 </TouchableOpacity>
-                              ) : (
+                              )}
+
+                              {/* INPUT NOME */}
+                              <View style={{ flex: 1 }}>
+                                <Input
+                                  value={item.name}
+                                  onChangeText={(t) => {
+                                    setActiveSuggestionFor(item.id);
+
+                                    const updated = applyNutrition({
+                                      ...item,
+                                      name: t,
+                                    });
+
+                                    updateIngredientObject(item.id, updated);
+
+                                    if (t.length > 1) {
+                                      const results = fuse
+                                        .search(t)
+                                        .map((r) => r.item);
+                                      setSuggestions(results.slice(0, 20));
+                                    } else {
+                                      setSuggestions([]);
+                                    }
+                                  }}
+                                  placeholder="Ingrediente"
+                                  multiline
+                                  style={{ borderColor: "white" }}
+                                />
+                              </View>
+
+                              {/* INPUT QUANTITÀ */}
+                              <Input
+                                value={String(item.quantity ?? "")}
+                                onChangeText={(t) => {
+                                  const value = t === "" ? "" : Number(t);
+
+                                  if (item.type !== "ingredient") {
+                                    return;
+                                  }
+
+                                  // da qui in poi item è IngredientFlat
+                                  const key = item.name.trim().toLowerCase();
+                                  const data = nutritionIndex[key];
+
+                                  if (!data) {
+                                    updateIngredient(
+                                      item.id,
+                                      "quantity",
+                                      value,
+                                    );
+                                    return;
+                                  }
+
+                                  updateIngredientObject(item.id, {
+                                    ...item,
+                                    quantity: value,
+                                    kcal: (data.kcal * (value || 0)) / 100,
+                                    carbs: (data.carbs * (value || 0)) / 100,
+                                    protein:
+                                      (data.protein * (value || 0)) / 100,
+                                    fat: (data.fat * (value || 0)) / 100,
+                                  });
+                                }}
+                                placeholder="0"
+                                multiline
+                                style={{
+                                  width: 70,
+                                  textAlign: "center",
+                                  borderColor: "white",
+                                }}
+                              />
+
+                              {/* INPUT UNITÀ */}
+                              <Input
+                                value={item.unit}
+                                onChangeText={(t) =>
+                                  updateIngredient(item.id, "unit", t)
+                                }
+                                placeholder="g"
+                                multiline
+                                style={{
+                                  width: 100,
+                                  textAlign: "center",
+                                  borderColor: "white",
+                                }}
+                              />
+
+                              {/* ELLIPSIS */}
+                              {!groupingMode && (
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    setOpenActions(
+                                      openActions === item.id ? null : item.id,
+                                    )
+                                  }
+                                  style={styles.rowEllipsisBtn}
+                                >
+                                  <Ionicons
+                                    name={
+                                      openActions === item.id
+                                        ? "close"
+                                        : "ellipsis-vertical"
+                                    }
+                                    size={20}
+                                    color={COLORS.secondary}
+                                  />
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                            <View
+                              style={{
+                                height: 1,
+                                backgroundColor: "#f1f1f1",
+                                alignItems: "center",
+                              }}
+                            ></View>
+
+                            {/* ⭐ SUGGERIMENTI IDENTICI AD ADD */}
+                            {activeSuggestionFor === item.id &&
+                              suggestions.length > 0 && (
+                                <View
+                                  style={{
+                                    backgroundColor: "#fff",
+                                    borderRadius: 6,
+                                    marginTop: -10,
+                                    marginHorizontal: 10,
+                                    paddingVertical: 4,
+                                    elevation: 3,
+                                  }}
+                                >
+                                  {suggestions.map((s) => (
+                                    <TouchableOpacity
+                                      key={s.name}
+                                      onPress={() => {
+                                        const data = nutritionIndex[s.name];
+
+                                        if (item.type !== "ingredient") return;
+
+                                        const q = Number(item.quantity) || 0;
+
+                                        updateIngredientObject(item.id, {
+                                          ...item,
+                                          name: s.name,
+                                          kcal: (s.kcal * q) / 100,
+                                          carbs: (s.carbs * q) / 100,
+                                          protein: (s.protein * q) / 100,
+                                          fat: (s.fat * q) / 100,
+                                        });
+
+                                        setSuggestions([]);
+                                        setActiveSuggestionFor(null);
+                                      }}
+                                      style={{ padding: 8 }}
+                                    >
+                                      <Text>{s.name}</Text>
+                                    </TouchableOpacity>
+                                  ))}
+                                </View>
+                              )}
+
+                            {/* SPILLETTA */}
+                            {linkedRecipe && (
+                              <TouchableOpacity
+                                onPress={() =>
+                                  router.push(`/recipe/${linkedRecipe.id}`)
+                                }
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  alignSelf: "flex-start",
+                                  backgroundColor: "#eef3ff",
+                                  paddingHorizontal: 10,
+                                  paddingVertical: 0,
+                                  borderRadius: 12,
+                                  marginTop: -40,
+                                  marginLeft: 15,
+                                }}
+                              >
+                                <Ionicons
+                                  name="link-outline"
+                                  size={16}
+                                  color={COLORS.primary}
+                                />
+                                <Text
+                                  style={{
+                                    marginLeft: 6,
+                                    color: COLORS.primary,
+                                    fontSize: 11,
+                                    fontWeight: "500",
+                                  }}
+                                >
+                                  {linkedRecipe.title}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+
+                            {/* MENU INGREDIENTE */}
+                            {openActions === item.id && (
+                              <Animated.View
+                                entering={FadeInRight.duration(180).damping(18)}
+                                exiting={FadeOutLeft.duration(150)}
+                                style={[
+                                  styles.ingredientActionsOverlay,
+                                  {
+                                    marginLeft: 20,
+                                    marginBottom: 5,
+                                  },
+                                ]}
+                              >
+                                {/* COLLEGA */}
+                                {!item.linkedRecipeId ? (
+                                  <TouchableOpacity
+                                    style={styles.ingredientActionBtn}
+                                    onPress={() => {
+                                      const realIndex = ingredients.findIndex(
+                                        (i) => i.id === item.id,
+                                      );
+                                      if (realIndex !== -1)
+                                        openRecipePicker(realIndex);
+                                      setOpenActions(null);
+                                    }}
+                                  >
+                                    <Ionicons
+                                      name="link-outline"
+                                      size={20}
+                                      color={COLORS.secondary}
+                                    />
+                                    <Text style={styles.ingredientActionLabel}>
+                                      Collega
+                                    </Text>
+                                  </TouchableOpacity>
+                                ) : (
+                                  <TouchableOpacity
+                                    style={styles.ingredientActionBtn}
+                                    onPress={() => {
+                                      updateIngredientField(
+                                        item.id,
+                                        "linkedRecipeId",
+                                        null,
+                                      );
+                                      setOpenActions(null);
+                                    }}
+                                  >
+                                    <Ionicons
+                                      name="unlink-outline"
+                                      size={20}
+                                      color="#cb0047"
+                                    />
+                                    <Text
+                                      style={[
+                                        styles.ingredientActionLabel,
+                                        { color: "#cb0047" },
+                                      ]}
+                                    >
+                                      Rimuovi link
+                                    </Text>
+                                  </TouchableOpacity>
+                                )}
+
+                                <View style={styles.ingredientActionDivider} />
+
+                                {/* ELIMINA */}
                                 <TouchableOpacity
                                   style={styles.ingredientActionBtn}
                                   onPress={() => {
-                                    updateIngredientField(
-                                      item.id,
-                                      "linkedRecipeId",
-                                      null,
-                                    );
+                                    removeIngredient(item.id);
                                     setOpenActions(null);
                                   }}
                                 >
                                   <Ionicons
-                                    name="unlink-outline"
-                                    size={22}
+                                    name="trash-outline"
+                                    size={20}
                                     color="#cb0047"
                                   />
                                   <Text
@@ -2100,769 +2560,817 @@ export default function EditRecipeScreen() {
                                       { color: "#cb0047" },
                                     ]}
                                   >
-                                    Rimuovi link
+                                    Elimina
                                   </Text>
                                 </TouchableOpacity>
-                              )}
 
-                              <View style={styles.ingredientActionDivider} />
+                                <View style={styles.ingredientActionDivider} />
 
-                              {/* ELIMINA */}
-                              <TouchableOpacity
-                                style={styles.ingredientActionBtn}
-                                onPress={() => {
-                                  removeIngredient(item.id);
-                                  setOpenActions(null);
-                                }}
-                              >
-                                <Ionicons
-                                  name="trash-outline"
-                                  size={22}
-                                  color="#cb0047"
-                                />
-                                <Text
-                                  style={[
-                                    styles.ingredientActionLabel,
-                                    { color: "#cb0047" },
-                                  ]}
+                                {/* SU */}
+                                <TouchableOpacity
+                                  style={styles.ingredientActionBtn}
+                                  onPress={() => {
+                                    moveIngredientUp(item.id);
+                                    setOpenActions(null);
+                                  }}
                                 >
-                                  Elimina
-                                </Text>
-                              </TouchableOpacity>
-
-                              <View style={styles.ingredientActionDivider} />
-
-                              {/* SU */}
-                              <TouchableOpacity
-                                style={styles.ingredientActionBtn}
-                                onPress={() => {
-                                  moveIngredientUp(item.id);
-                                  setOpenActions(null);
-                                }}
-                              >
-                                <Ionicons
-                                  name="chevron-up-outline"
-                                  size={22}
-                                  color={COLORS.secondary}
-                                />
-                                <Text style={styles.ingredientActionLabel}>
-                                  Su
-                                </Text>
-                              </TouchableOpacity>
-
-                              <View style={styles.ingredientActionDivider} />
-
-                              {/* GIÙ */}
-                              <TouchableOpacity
-                                style={styles.ingredientActionBtn}
-                                onPress={() => {
-                                  moveIngredientDown(item.id);
-                                  setOpenActions(null);
-                                }}
-                              >
-                                <Ionicons
-                                  name="chevron-down-outline"
-                                  size={22}
-                                  color={COLORS.secondary}
-                                />
-                                <Text style={styles.ingredientActionLabel}>
-                                  Giù
-                                </Text>
-                              </TouchableOpacity>
-                            </Animated.View>
-                          )}
-                        </View>
-                      );
-                    }
-                  })}
-                </View>
-              )}
-
-              {/* ============================================================
-             PROCEDIMENTO
-          ============================================================ */}
-              {activeTab === "procedimento" && (
-                <View style={styles.sectionWrapper}>
-                  {steps.map((item, index) => (
-                    <View key={index} style={{ position: "relative" }}>
-                      {/* ⭐ POPOVER SEMPRE SOPRA */}
-                      {openStepMenu === index && (
-                        <View style={styles.stepPopoverWrapper}>
-                          <View style={styles.stepPopover}>
-                            {/* OCR */}
-                            <TouchableOpacity
-                              style={styles.stepPopoverItem}
-                              onPress={() => {
-                                handleOCRStep(index);
-                                setOpenStepMenu(null);
-                              }}
-                            >
-                              <Text style={styles.stepPopoverText}>OCR</Text>
-                            </TouchableOpacity>
-
-                            {/* DUPLICA */}
-                            <TouchableOpacity
-                              style={styles.stepPopoverItem}
-                              onPress={() => {
-                                const clone: StepForm = {
-                                  title: item.title,
-                                  description: item.description,
-                                  imageUri: item.imageUri ?? null,
-                                  textImageUri: null,
-                                  collapsed: false,
-                                  actionsOpen: false,
-                                };
-                                setSteps((prev) => {
-                                  const arr = [...prev];
-                                  arr.splice(index + 1, 0, clone);
-                                  return arr;
-                                });
-                                setOpenStepMenu(null);
-                              }}
-                            >
-                              <Text style={styles.stepPopoverText}>
-                                Duplica
-                              </Text>
-                            </TouchableOpacity>
-
-                            {/* SPOSTA SU */}
-                            <TouchableOpacity
-                              style={styles.stepPopoverItem}
-                              onPress={() => {
-                                moveStepUp(index);
-                                setOpenStepMenu(null);
-                              }}
-                            >
-                              <Text style={styles.stepPopoverText}>
-                                Sposta su
-                              </Text>
-                            </TouchableOpacity>
-
-                            {/* SPOSTA GIÙ */}
-                            <TouchableOpacity
-                              style={styles.stepPopoverItem}
-                              onPress={() => {
-                                moveStepDown(index);
-                                setOpenStepMenu(null);
-                              }}
-                            >
-                              <Text style={styles.stepPopoverText}>
-                                Sposta giù
-                              </Text>
-                            </TouchableOpacity>
-
-                            {/* ELIMINA */}
-                            <TouchableOpacity
-                              style={styles.stepPopoverItem}
-                              onPress={() => {
-                                removeStep(index);
-                                setOpenStepMenu(null);
-                              }}
-                            >
-                              <Text
-                                style={[
-                                  styles.stepPopoverText,
-                                  { color: "#cb0047" },
-                                ]}
-                              >
-                                Elimina
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-
-                          <View style={styles.stepPopoverArrow} />
-                        </View>
-                      )}
-
-                      {/* ⭐ CARD (COLLASSATA O ESPANSA) */}
-                      <Animated.View
-                        entering={FadeInDown.delay(50)}
-                        exiting={FadeOutUp}
-                      >
-                        {item.collapsed ? (
-                          /* ⭐ MINI‑CARD */
-                          <Pressable
-                            onPress={() =>
-                              setSteps((prev) =>
-                                prev.map((s, i) =>
-                                  i === index ? { ...s, collapsed: false } : s,
-                                ),
-                              )
-                            }
-                            style={[
-                              styles.stepCollapsedCard,
-                              { position: "relative" },
-                            ]}
-                          >
-                            {/* IMMAGINE */}
-                            <View style={styles.stepCollapsedImageWrapper}>
-                              {item.imageUri ? (
-                                <Image
-                                  source={{ uri: item.imageUri }}
-                                  style={styles.stepCollapsedImage}
-                                />
-                              ) : (
-                                <View style={styles.stepCollapsedPlaceholder}>
                                   <Ionicons
-                                    name="camera-outline"
-                                    size={22}
+                                    name="caret-up-outline"
+                                    size={20}
                                     color={COLORS.secondary}
                                   />
-                                </View>
-                              )}
+                                  <Text style={styles.ingredientActionLabel}>
+                                    Su
+                                  </Text>
+                                </TouchableOpacity>
 
-                              <View style={styles.stepCollapsedNumber}>
-                                <Text style={styles.stepCollapsedNumberText}>
-                                  {index + 1}
-                                </Text>
-                              </View>
-                            </View>
+                                <View style={styles.ingredientActionDivider} />
 
-                            {/* TESTO */}
-                            <View style={styles.stepCollapsedTextWrapper}>
-                              <Text
-                                numberOfLines={1}
-                                style={styles.stepCollapsedTitle}
-                              >
-                                {item.title.trim() || "Passaggio"}
-                              </Text>
+                                {/* GIÙ */}
+                                <TouchableOpacity
+                                  style={styles.ingredientActionBtn}
+                                  onPress={() => {
+                                    moveIngredientDown(item.id);
+                                    setOpenActions(null);
+                                  }}
+                                >
+                                  <Ionicons
+                                    name="caret-down-outline"
+                                    size={20}
+                                    color={COLORS.secondary}
+                                  />
+                                  <Text style={styles.ingredientActionLabel}>
+                                    Giù
+                                  </Text>
+                                </TouchableOpacity>
+                              </Animated.View>
+                            )}
+                          </View>
+                        );
+                      }
+                    })}
+                  </View>
+                )}
 
-                              <Text style={styles.stepCollapsedSubtitle}>
-                                Mostra dettagli
-                              </Text>
-                            </View>
-
-                            {/* ⭐ ELLIPSIS DENTRO LA CARD */}
+                {/* ============================================================
+             PROCEDIMENTO
+          ============================================================ */}
+                {activeTab === "procedimento" && (
+                  <View style={styles.sectionWrapper}>
+                    {steps.map((item, index) => (
+                      <View key={index} style={{ position: "relative" }}>
+                        {/* ⭐ CARD (COLLASSATA O ESPANSA) */}
+                        <Animated.View
+                          entering={FadeInDown.delay(50)}
+                          exiting={FadeOutUp}
+                        >
+                          {item.collapsed ? (
+                            /* ⭐ MINI‑CARD */
                             <Pressable
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                setOpenStepMenu(
-                                  openStepMenu === index ? null : index,
-                                );
-                              }}
-                              hitSlop={10}
-                              style={{
-                                position: "absolute",
-                                right: 15,
-                                top: 30,
-                                padding: 6,
-                                borderRadius: 8,
-                                zIndex: 20,
-                              }}
-                            >
-                              <Ionicons
-                                name="ellipsis-vertical"
-                                size={20}
-                                color={COLORS.primary}
-                              />
-                            </Pressable>
-                          </Pressable>
-                        ) : (
-                          /* ⭐ CARD ESPANSA (rimane invariata) */
-                          <View style={styles.stepExpandedCard}>
-                            {/* HEADER */}
-                            <View style={styles.stepHeaderExpanded}>
-                              <View style={styles.stepNumberExpanded}>
-                                <Text style={styles.stepNumberExpandedText}>
-                                  {index + 1}
-                                </Text>
-                              </View>
-
-                              <TouchableOpacity
-                                onPress={() =>
-                                  setSteps((prev) =>
-                                    prev.map((s, i) =>
-                                      i === index
-                                        ? { ...s, collapsed: true }
-                                        : s,
-                                    ),
-                                  )
-                                }
-                                style={styles.stepTitleWrapperExpanded}
-                              >
-                                <Input
-                                  value={item.title}
-                                  onChangeText={(t) =>
-                                    updateStepTitle(index, t)
-                                  }
-                                  placeholder="Titolo passaggio"
-                                  style={styles.stepTitleInputExpanded}
-                                />
-
-                                <Text style={styles.stepCollapseLabelExpanded}>
-                                  Riduci
-                                </Text>
-                              </TouchableOpacity>
-
-                              <StepEllipsisButton
-                                onPress={() =>
-                                  setOpenStepMenu(
-                                    openStepMenu === index ? null : index,
-                                  )
-                                }
-                              />
-                            </View>
-
-                            <StepImage
-                              uri={item.imageUri ?? null}
                               onPress={() =>
-                                chooseImageSource((uri) =>
-                                  setSteps((prev) =>
-                                    prev.map((s, i) =>
-                                      i === index ? { ...s, imageUri: uri } : s,
-                                    ),
+                                setSteps((prev) =>
+                                  prev.map((s, i) =>
+                                    i === index
+                                      ? { ...s, collapsed: false }
+                                      : s,
                                   ),
                                 )
                               }
-                            />
+                              style={[
+                                styles.stepCollapsedCard,
+                                { position: "relative" },
+                              ]}
+                            >
+                              {/* ⭐ OVERLAY ACTIONS */}
+                              {openStepOverlay === index && (
+                                <Animated.View
+                                  entering={FadeInRight.duration(180).damping(
+                                    18,
+                                  )}
+                                  exiting={FadeOutLeft.duration(150)}
+                                  style={styles.stepOverlay}
+                                >
+                                  {/* ⭐ X CHIUSURA */}
+                                  <TouchableOpacity
+                                    onPress={() => setOpenStepOverlay(null)}
+                                    style={[
+                                      styles.stepOverlayCloseBtn,
+                                      { right: 5 },
+                                    ]}
+                                  >
+                                    <Ionicons
+                                      name="close"
+                                      size={22}
+                                      color={COLORS.secondary}
+                                    />
+                                  </TouchableOpacity>
 
-                            {item.imageUri && (
-                              <TouchableOpacity
-                                onPress={() =>
-                                  setSteps((prev) =>
-                                    prev.map((s, i) =>
-                                      i === index
-                                        ? { ...s, imageUri: null }
-                                        : s,
-                                    ),
-                                  )
-                                }
-                                style={styles.deleteSmallButton}
+                                  {/* ⭐ COLLASSATA → 5 pulsanti in riga */}
+                                  {item.collapsed ? (
+                                    <View style={styles.rowCollapsed}>
+                                      {renderStepActionsCollapsed(index)}
+                                    </View>
+                                  ) : (
+                                    /* ⭐ ESPANSA → 3 righe, 2 pulsanti per riga, ultimo centrato */
+                                    renderStepActionsExpanded(index)
+                                  )}
+                                </Animated.View>
+                              )}
+                              {/* IMMAGINE */}
+                              <View style={styles.stepCollapsedImageWrapper}>
+                                {item.imageUri ? (
+                                  <Image
+                                    source={{ uri: item.imageUri }}
+                                    style={styles.stepCollapsedImage}
+                                  />
+                                ) : (
+                                  <View style={styles.stepCollapsedPlaceholder}>
+                                    <Ionicons
+                                      name="camera-outline"
+                                      size={22}
+                                      color={COLORS.secondary}
+                                    />
+                                  </View>
+                                )}
+
+                                <View style={styles.stepCollapsedNumber}>
+                                  <Text style={styles.stepCollapsedNumberText}>
+                                    {index + 1}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              {/* TESTO */}
+                              <View style={styles.stepCollapsedTextWrapper}>
+                                <Text
+                                  numberOfLines={1}
+                                  style={styles.stepCollapsedTitle}
+                                >
+                                  {item.title.trim() || "Passaggio"}
+                                </Text>
+
+                                <Text style={styles.stepCollapsedSubtitle}>
+                                  Mostra dettagli
+                                </Text>
+                              </View>
+
+                              {/* ⭐ ELLIPSIS DENTRO LA CARD */}
+                              <Pressable
+                                onPress={(e) => {
+                                  e.stopPropagation();
+                                  setOpenStepMenu(
+                                    openStepMenu === index ? null : index,
+                                  );
+                                }}
+                                hitSlop={10}
+                                style={{
+                                  position: "absolute",
+                                  right: 15,
+                                  top: 30,
+                                  padding: 6,
+                                  borderRadius: 8,
+                                  zIndex: 20,
+                                }}
                               >
                                 <Ionicons
-                                  name="close"
+                                  name="ellipsis-vertical"
                                   size={20}
-                                  color="#cb0047"
+                                  color={COLORS.primary}
                                 />
-                              </TouchableOpacity>
-                            )}
+                              </Pressable>
+                            </Pressable>
+                          ) : (
+                            /* ⭐ CARD ESPANSA (rimane invariata) */
+                            <View style={styles.stepExpandedCard}>
+                              {openStepOverlay === index && (
+                                <Animated.View
+                                  entering={FadeInRight.duration(180).damping(
+                                    18,
+                                  )}
+                                  exiting={FadeOutLeft.duration(150)}
+                                  style={styles.stepOverlay}
+                                >
+                                  {/* ⭐ X CHIUSURA */}
+                                  <TouchableOpacity
+                                    onPress={() => setOpenStepOverlay(null)}
+                                    style={styles.stepOverlayCloseBtn}
+                                  >
+                                    <Ionicons
+                                      name="close"
+                                      size={22}
+                                      color={COLORS.secondary}
+                                    />
+                                  </TouchableOpacity>
 
-                            {/* DESCRIZIONE */}
-                            <View style={{ position: "relative" }}>
-                              {item.description.trim().length > 0 && (
+                                  {/* ⭐ COLLASSATA → 5 pulsanti in riga */}
+                                  {item.collapsed ? (
+                                    <View style={styles.rowCollapsed}>
+                                      {renderStepActionsCollapsed(index)}
+                                    </View>
+                                  ) : (
+                                    /* ⭐ ESPANSA → 3 righe, 2 pulsanti per riga, ultimo centrato */
+                                    renderStepActionsExpanded(index)
+                                  )}
+                                </Animated.View>
+                              )}
+                              {/* HEADER */}
+                              <View style={styles.stepHeaderExpanded}>
+                                <View style={styles.stepNumberExpanded}>
+                                  <Text style={styles.stepNumberExpandedText}>
+                                    {index + 1}
+                                  </Text>
+                                </View>
+
                                 <TouchableOpacity
                                   onPress={() =>
                                     setSteps((prev) =>
                                       prev.map((s, i) =>
                                         i === index
-                                          ? { ...s, description: "" }
+                                          ? { ...s, collapsed: true }
                                           : s,
                                       ),
                                     )
                                   }
-                                  style={styles.deleteSmallButton}
+                                  style={styles.stepTitleWrapperExpanded}
+                                >
+                                  <Input
+                                    value={item.title}
+                                    onChangeText={(t) =>
+                                      updateStepTitle(index, t)
+                                    }
+                                    placeholder="Titolo passaggio"
+                                    style={styles.stepTitleInputExpanded}
+                                  />
+
+                                  <Text
+                                    style={styles.stepCollapseLabelExpanded}
+                                  >
+                                    Riduci
+                                  </Text>
+                                </TouchableOpacity>
+
+                                {/* ⭐ ELLIPSIS → X */}
+                                <Pressable
+                                  onPress={() =>
+                                    setOpenStepOverlay(
+                                      openStepOverlay === index ? null : index,
+                                    )
+                                  }
+                                  style={{ padding: 6 }}
                                 >
                                   <Ionicons
-                                    name="close"
-                                    size={20}
-                                    color="#cb0047"
+                                    name="ellipsis-vertical"
+                                    size={22}
+                                    color={COLORS.primary}
                                   />
-                                </TouchableOpacity>
+                                </Pressable>
+                              </View>
+
+                              {/* IMMAGINE PRINCIPALE */}
+                              <StepImage
+                                uri={item.imageUri}
+                                onPress={() => chooseStepImage(index)}
+                              />
+
+                              {/* ⭐ OCR PREVIEW + DELETE */}
+                              {item.textImageUri && (
+                                <View style={{ position: "relative" }}>
+                                  <StepOcrPreview uri={item.textImageUri} />
+
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      setSteps((prev) =>
+                                        prev.map((s, i) =>
+                                          i === index
+                                            ? { ...s, textImageUri: null }
+                                            : s,
+                                        ),
+                                      )
+                                    }
+                                    style={{
+                                      position: "absolute",
+                                      top: 8,
+                                      right: 0,
+                                      backgroundColor: "white",
+                                      borderRadius: 20,
+                                      padding: 2,
+                                      shadowColor: "#000",
+                                      shadowOpacity: 0.15,
+                                      shadowRadius: 4,
+                                      elevation: 3,
+                                      zIndex: 20,
+                                    }}
+                                  >
+                                    <Ionicons
+                                      name="close"
+                                      size={20}
+                                      color="#cb0047"
+                                    />
+                                  </TouchableOpacity>
+                                </View>
                               )}
 
-                              <Input
-                                style={styles.stepDescriptionInputExpanded}
-                                value={item.description}
-                                onChangeText={(t) =>
-                                  updateStepDescription(index, t)
-                                }
-                                placeholder="Scrivi qui la descrizione"
-                                multiline
-                              />
+                              {/* DESCRIZIONE */}
+                              <View style={{ position: "relative" }}>
+                                {item.description.trim().length > 0 && (
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      setSteps((prev) =>
+                                        prev.map((s, i) =>
+                                          i === index
+                                            ? { ...s, description: "" }
+                                            : s,
+                                        ),
+                                      )
+                                    }
+                                    style={styles.deleteSmallButton}
+                                  >
+                                    <Ionicons
+                                      name="close"
+                                      size={20}
+                                      color="#cb0047"
+                                    />
+                                  </TouchableOpacity>
+                                )}
+
+                                <Input
+                                  style={styles.stepDescriptionInputExpanded}
+                                  value={item.description}
+                                  onChangeText={(t) =>
+                                    updateStepDescription(index, t)
+                                  }
+                                  placeholder="Scrivi qui la descrizione"
+                                  multiline
+                                />
+                              </View>
                             </View>
-                          </View>
-                        )}
-                      </Animated.View>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
-          </Animated.View>
-        </ScrollView>
-        {/* ============================================================
+                          )}
+                        </Animated.View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </Animated.View>
+
+            {/* ============================================================
              FLOATING BUTTONS
           ============================================================ */}
 
-        {/* FAB SALVA */}
-        <TouchableOpacity
-          style={styles.fabSave}
-          onPress={() => setSaveModalVisible(true)}
-        >
-          <Text bold style={styles.fabSaveLabel}>
-            Salva
-          </Text>
-        </TouchableOpacity>
-
-        {/* MODALE NUOVO GRUPPO */}
-        {showNewGroupModal && (
-          <>
-            <TouchableWithoutFeedback
-              onPress={() => setShowNewGroupModal(false)}
+            <Modal
+              visible={isPickerOpen}
+              animationType="slide"
+              transparent={false}
             >
-              <View style={styles.popoverOverlay} />
-            </TouchableWithoutFeedback>
-
-            <View style={styles.popoverWrapper}>
-              <View style={styles.popoverBox}>
-                <Text style={styles.groupCreateLabel}>Nuovo gruppo</Text>
-
-                <Input
-                  placeholder="Titolo gruppo"
-                  value={tempGroupTitle}
-                  onChangeText={setTempGroupTitle}
-                  style={styles.groupInput}
-                />
-
-                <TouchableOpacity
-                  style={styles.groupCreateBtn}
-                  onPress={() => {
-                    const title = tempGroupTitle.trim();
-
-                    if (!title) {
-                      alert("Inserisci un nome per il gruppo");
-                      return;
-                    }
-
-                    const exists = groups.some(
-                      (g) =>
-                        g.title.trim().toLowerCase() === title.toLowerCase(),
-                    );
-
-                    if (exists) {
-                      alert("Esiste già un gruppo con questo nome");
-                      return;
-                    }
-
-                    const newGroupId = uid();
-
-                    setGroups((prev) => [
-                      ...prev,
-                      {
-                        id: newGroupId,
-                        type: "group",
-                        title,
-                        collapsed: false,
-                      },
-                    ]);
-
-                    setTempGroupTitle("");
-                    setShowNewGroupModal(false);
+              <SafeAreaView style={{ flex: 1, padding: 20 }}>
+                <Text
+                  bold
+                  style={{
+                    fontSize: 22,
+                    marginBottom: 30,
+                    textAlign: "center",
+                    marginTop: 60,
                   }}
                 >
-                  <Text style={styles.groupCreateBtnText}>Crea</Text>
+                  Collega una ricetta
+                </Text>
+
+                <ScrollView>
+                  {recipes.map((r) => (
+                    <TouchableOpacity
+                      key={r.id}
+                      onPress={() => {
+                        if (selectedIngredientIndex !== null) {
+                          const ing = ingredients[selectedIngredientIndex];
+                          updateIngredientField(ing.id, "linkedRecipeId", r.id);
+                        }
+                        setIsPickerOpen(false);
+                      }}
+                      style={{
+                        paddingVertical: 14,
+                        borderBottomWidth: 1,
+                        borderColor: "#ddd",
+                      }}
+                    >
+                      <Text style={{ fontSize: 18 }}>{r.title}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <TouchableOpacity
+                  onPress={() => setIsPickerOpen(false)}
+                  style={{
+                    marginTop: 20,
+                    padding: 14,
+                    backgroundColor: COLORS.primary,
+                    borderRadius: 8,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text bold style={{ fontSize: 16, color: "white" }}>
+                    Annulla
+                  </Text>
+                </TouchableOpacity>
+              </SafeAreaView>
+            </Modal>
+
+            <Modal
+              visible={showNewGroupModal}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setShowNewGroupModal(false)}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: "rgba(0,0,0,0.4)",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  padding: 20,
+                }}
+              >
+                <View
+                  style={{
+                    width: "100%",
+                    backgroundColor: "white",
+                    borderRadius: 16,
+                    padding: 20,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 20,
+                      fontWeight: "600",
+                      textAlign: "center",
+                      marginBottom: 10,
+                    }}
+                  >
+                    Crea o scegli un gruppo
+                  </Text>
+
+                  {/* INPUT NUOVO GRUPPO */}
+                  <Input
+                    placeholder="Nome nuovo gruppo"
+                    value={newGroupTitle}
+                    onChangeText={setNewGroupTitle}
+                    style={{ marginBottom: 15, textAlign: "center" }}
+                  />
+
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: COLORS.secondary,
+                      paddingVertical: 12,
+                      borderRadius: 10,
+                      alignItems: "center",
+                      marginBottom: 20,
+                    }}
+                    onPress={() => {
+                      if (!newGroupTitle.trim()) return;
+                      createNewGroup(newGroupTitle.trim());
+                      setNewGroupTitle("");
+                      setGroupingMode(false);
+                      setSelectedIngredients([]);
+                      setShowNewGroupModal(false);
+                    }}
+                  >
+                    <Text style={{ color: "white", fontWeight: "600" }}>
+                      Crea gruppo
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* GRUPPI ESISTENTI */}
+                  {groups.length > 0 && (
+                    <>
+                      <Text
+                        style={{
+                          fontSize: 16,
+                          fontWeight: "600",
+                          marginBottom: 10,
+                          textAlign: "center",
+                        }}
+                      >
+                        Oppure aggiungi a un gruppo esistente:
+                      </Text>
+
+                      {groups.map((g) => (
+                        <TouchableOpacity
+                          key={g.id}
+                          style={{
+                            paddingVertical: 10,
+                            borderBottomWidth: 1,
+                            borderColor: "#eee",
+                          }}
+                          onPress={() => {
+                            addIngredientsToGroup(g.id, selectedIngredients);
+                            setGroupingMode(false);
+                            setSelectedIngredients([]);
+                            setShowNewGroupModal(false);
+                          }}
+                        >
+                          <Text
+                            bold
+                            style={{
+                              fontSize: 16,
+                              textAlign: "center",
+                              color: COLORS.secondary,
+                            }}
+                          >
+                            {g.title}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </>
+                  )}
+
+                  {/* ANNULLA */}
+                  <TouchableOpacity
+                    onPress={() => setShowNewGroupModal(false)}
+                    style={{
+                      marginTop: 20,
+                      paddingVertical: 12,
+                      backgroundColor: "#ddd",
+                      borderRadius: 10,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text style={{ fontWeight: "600" }}>Annulla</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Modal>
+
+            <Modal
+              visible={saveModalVisible}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setSaveModalVisible(false)}
+            >
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  backgroundColor: "rgba(0,0,0,0.4)",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+                activeOpacity={1}
+                onPress={() => setSaveModalVisible(false)}
+              />
+
+              <View
+                style={{
+                  position: "absolute",
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  backgroundColor: "white",
+                  paddingVertical: 20,
+                  borderTopLeftRadius: 20,
+                  borderTopRightRadius: 20,
+                }}
+              >
+                <TouchableOpacity
+                  style={{
+                    paddingVertical: 16,
+                    paddingHorizontal: 20,
+                    flexDirection: "row",
+                    alignItems: "center",
+                  }}
+                  onPress={() => {
+                    setSaveModalVisible(false);
+                    handleOverwrite();
+                  }}
+                >
+                  <Ionicons name="create-outline" size={22} color="#333" />
+                  <Text style={{ marginLeft: 12, fontSize: 16 }}>
+                    Sovrascrivi ricetta
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    paddingVertical: 16,
+                    paddingHorizontal: 20,
+                    flexDirection: "row",
+                    alignItems: "center",
+                  }}
+                  onPress={() => {
+                    setSaveModalVisible(false);
+                    handleSaveAsNew();
+                  }}
+                >
+                  <Ionicons name="duplicate-outline" size={22} color="#333" />
+                  <Text style={{ marginLeft: 12, fontSize: 16 }}>
+                    Salva come nuova
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    paddingVertical: 16,
+                    paddingHorizontal: 20,
+                    flexDirection: "row",
+                    alignItems: "center",
+                  }}
+                  onPress={() => setSaveModalVisible(false)}
+                >
+                  <Ionicons
+                    name="close-circle-outline"
+                    size={22}
+                    color="#333"
+                  />
+                  <Text style={{ marginLeft: 12, fontSize: 16 }}>Annulla</Text>
                 </TouchableOpacity>
               </View>
+            </Modal>
+          </KeyboardAwareScrollView>
 
-              <View style={styles.popoverArrow} />
-            </View>
-          </>
-        )}
-
-        {/* ⭐ BARRA FISSA INGREDIENTI */}
-        {activeTab === "ingredienti" && (
-          <View
-            style={{
-              position: "absolute",
-              bottom: 0,
-              left: 0,
-              right: 0,
-              backgroundColor: "white",
-              paddingVertical: 12,
-              paddingBottom: 40,
-              paddingHorizontal: 16,
-              borderTopWidth: 1,
-              borderColor: "#ddd",
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              zIndex: 50,
-            }}
+          {/* FAB SALVA */}
+          <TouchableOpacity
+            style={styles.fabSave}
+            onPress={() => setSaveModalVisible(true)}
           >
-            {/* SVUOTA */}
-            <TouchableOpacity
-              onPress={() => setIngredients([])}
-              style={{ paddingHorizontal: 10, alignItems: "center" }}
-            >
-              <Ionicons
-                name="trash-outline"
-                size={18}
-                color={COLORS.textLight}
-              />
-              <Text style={{ color: COLORS.textLight, fontSize: 10 }}>
-                Svuota
-              </Text>
-            </TouchableOpacity>
-
-            {/* RAGGRUPPA */}
-            <TouchableOpacity
-              onPress={() => setGroupingMode(true)}
-              style={{ paddingHorizontal: 10, alignItems: "center" }}
-            >
-              <Ionicons
-                name="albums-outline"
-                size={18}
-                color={COLORS.textLight}
-              />
-              <Text style={{ color: COLORS.textLight, fontSize: 10 }}>
-                Raggruppa
-              </Text>
-            </TouchableOpacity>
-
-            {/* OCR */}
-            <TouchableOpacity
-              onPress={handleOCRIngredients}
-              style={{ paddingHorizontal: 10, alignItems: "center" }}
-            >
-              <Ionicons
-                name="scan-outline"
-                size={18}
-                color={COLORS.textLight}
-              />
-              <Text style={{ color: COLORS.textLight, fontSize: 10 }}>OCR</Text>
-            </TouchableOpacity>
-
-            {/* NUOVO INGREDIENTE */}
-            <TouchableOpacity
-              onPress={() =>
-                setIngredients((prev) => [
-                  ...prev,
-                  {
-                    id: uid(),
-                    type: "ingredient",
-                    name: "",
-                    quantity: "",
-                    unit: "",
-                    groupId: null,
-                    linkedRecipeId: null,
-                  },
-                ])
-              }
-              style={{ paddingHorizontal: 10, alignItems: "center" }}
-            >
-              <Ionicons
-                name="add-circle-outline"
-                size={18}
-                color={COLORS.textLight}
-              />
-              <Text style={{ color: COLORS.textLight, fontSize: 10 }}>
-                Ingrediente
-              </Text>
-            </TouchableOpacity>
-
-            {/* NUOVO GRUPPO */}
-            <TouchableOpacity
-              onPress={() => setShowNewGroupModal(true)}
-              style={{ paddingHorizontal: 10, alignItems: "center" }}
-            >
-              <Ionicons
-                name="add-circle-outline"
-                size={18}
-                color={COLORS.textLight}
-              />
-              <Text style={{ color: COLORS.textLight, fontSize: 10 }}>
-                Gruppo
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* BARRA FISSA PROCEDIMENTO */}
-        {activeTab === "procedimento" && (
-          <View
-            style={{
-              position: "absolute",
-              bottom: 0,
-              left: 0,
-              right: 0,
-              backgroundColor: "white",
-              paddingVertical: 12,
-              paddingBottom: 40,
-              paddingHorizontal: 16,
-              borderTopWidth: 1,
-              borderColor: "#ddd",
-              flexDirection: "row",
-              justifyContent: "flex-end",
-              alignItems: "center",
-              zIndex: 50,
-            }}
-          >
-            <TouchableOpacity
-              style={{ marginRight: 10, alignItems: "center" }}
-              onPress={() =>
-                setSteps((prev) => [
-                  ...prev,
-                  {
-                    title: "",
-                    description: "",
-                    imageUri: null,
-                    textImageUri: null,
-                    collapsed: false,
-                    actionsOpen: false,
-                  },
-                ])
-              }
-            >
-              <Ionicons
-                name="add-circle-outline"
-                size={18}
-                color={COLORS.textLight}
-              />
-              <Text style={{ color: COLORS.textLight, fontSize: 10 }}>
-                Aggiungi passaggio
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* MODALE SELEZIONE RICETTA PER LINK */}
-        <Modal visible={isPickerOpen} animationType="slide" transparent={false}>
-          <SafeAreaView style={{ flex: 1, padding: 20 }}>
-            <Text
-              bold
-              style={{
-                fontSize: 22,
-                marginBottom: 30,
-                textAlign: "center",
-                marginTop: 60,
-              }}
-            >
-              Collega una ricetta
+            <Text bold style={styles.fabSaveLabel}>
+              Salva
             </Text>
+          </TouchableOpacity>
 
-            <ScrollView>
-              {recipes.map((r) => (
-                <TouchableOpacity
-                  key={r.id}
-                  onPress={() => {
-                    if (selectedIngredientIndex !== null) {
-                      const ing = ingredients[selectedIngredientIndex];
-                      updateIngredientField(ing.id, "linkedRecipeId", r.id);
-                    }
-                    setIsPickerOpen(false);
-                  }}
+          {/* ⭐ BARRA FISSA INGREDIENTI */}
+          {activeTab === "ingredienti" && (
+            <View style={styles.fixedIngredientsBar}>
+              {/* SVUOTA */}
+              <TouchableOpacity
+                onPress={() => setIngredients([])}
+                style={{
+                  paddingHorizontal: 10,
+                  alignItems: "center",
+                  paddingVertical: 12,
+                }}
+              >
+                <Ionicons
+                  name="trash-outline"
+                  size={18}
+                  color={COLORS.textLight}
+                />
+                <Text style={{ color: COLORS.textLight, fontSize: 10 }}>
+                  Svuota
+                </Text>
+              </TouchableOpacity>
+
+              {/* RAGGRUPPA */}
+              <TouchableOpacity
+                onPress={() => {
+                  if (!groupingMode) {
+                    // entra in modalità raggruppamento
+                    setGroupingMode(true);
+                    setSelectedIngredients([]);
+                  } else {
+                    // esce dalla modalità e apre il modal
+                    setGroupingMode(false);
+                    setShowNewGroupModal(true);
+                  }
+                }}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  alignItems: "center",
+                  backgroundColor: groupingMode ? COLORS.secondary : "white",
+                }}
+              >
+                <Ionicons
+                  name={groupingMode ? "checkmark" : "albums-outline"}
+                  size={18}
+                  color={groupingMode ? "white" : COLORS.textLight}
+                />
+                <Text
                   style={{
-                    paddingVertical: 14,
-                    borderBottomWidth: 1,
-                    borderColor: "#ddd",
+                    color: groupingMode ? "white" : COLORS.textLight,
+                    fontSize: 10,
                   }}
                 >
-                  <Text style={{ fontSize: 18 }}>{r.title}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                  {groupingMode ? "Fatto" : "Raggruppa"}
+                </Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => setIsPickerOpen(false)}
-              style={{
-                marginTop: 20,
-                padding: 14,
-                backgroundColor: COLORS.primary,
-                borderRadius: 8,
-                alignItems: "center",
-              }}
-            >
-              <Text bold style={{ fontSize: 16, color: "white" }}>
-                Annulla
-              </Text>
-            </TouchableOpacity>
-          </SafeAreaView>
-        </Modal>
+              {/* OCR */}
+              <TouchableOpacity
+                onPress={handleOCRIngredients}
+                style={{
+                  paddingHorizontal: 10,
+                  alignItems: "center",
+                  paddingVertical: 12,
+                }}
+              >
+                <Ionicons
+                  name="text-outline"
+                  size={18}
+                  color={COLORS.textLight}
+                />
+                <Text style={{ color: COLORS.textLight, fontSize: 10 }}>
+                  OCR
+                </Text>
+              </TouchableOpacity>
 
-        <Modal
-          visible={saveModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setSaveModalVisible(false)}
-        >
-          <TouchableOpacity
-            style={{
-              flex: 1,
-              backgroundColor: "rgba(0,0,0,0.4)",
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-            activeOpacity={1}
-            onPress={() => setSaveModalVisible(false)}
-          />
+              {/* NUOVO GRUPPO */}
+              <TouchableOpacity
+                onPress={() => setShowNewGroupModal(true)}
+                style={{
+                  paddingHorizontal: 10,
+                  alignItems: "center",
+                  paddingVertical: 12,
+                }}
+              >
+                <Ionicons
+                  name="add-circle-outline"
+                  size={18}
+                  color={COLORS.textLight}
+                />
+                <Text style={{ color: COLORS.textLight, fontSize: 10 }}>
+                  Gruppo
+                </Text>
+              </TouchableOpacity>
 
-          <View
-            style={{
-              position: "absolute",
-              bottom: 0,
-              left: 0,
-              right: 0,
-              backgroundColor: "white",
-              paddingVertical: 20,
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
-            }}
-          >
-            <TouchableOpacity
-              style={{
-                paddingVertical: 16,
-                paddingHorizontal: 20,
-                flexDirection: "row",
-                alignItems: "center",
-              }}
-              onPress={() => {
-                setSaveModalVisible(false);
-                handleOverwrite();
-              }}
-            >
-              <Ionicons name="create-outline" size={22} color="#333" />
-              <Text style={{ marginLeft: 12, fontSize: 16 }}>
-                Sovrascrivi ricetta
-              </Text>
-            </TouchableOpacity>
+              {/* NUOVO INGREDIENTE */}
+              <TouchableOpacity
+                onPress={() =>
+                  setIngredients((prev) => [
+                    ...prev,
+                    {
+                      id: uid(),
+                      type: "ingredient",
+                      name: "",
+                      quantity: "",
+                      unit: "",
+                      groupId: null,
+                      linkedRecipeId: null,
+                    },
+                  ])
+                }
+                style={{
+                  paddingHorizontal: 10,
+                  alignItems: "center",
+                  paddingVertical: 12,
+                }}
+              >
+                <Ionicons
+                  name="add-circle-outline"
+                  size={18}
+                  color={COLORS.textLight}
+                />
+                <Text style={{ color: COLORS.textLight, fontSize: 10 }}>
+                  Ingrediente
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
-            <TouchableOpacity
-              style={{
-                paddingVertical: 16,
-                paddingHorizontal: 20,
-                flexDirection: "row",
-                alignItems: "center",
-              }}
-              onPress={() => {
-                setSaveModalVisible(false);
-                handleSaveAsNew();
-              }}
-            >
-              <Ionicons name="duplicate-outline" size={22} color="#333" />
-              <Text style={{ marginLeft: 12, fontSize: 16 }}>
-                Salva come nuova
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={{
-                paddingVertical: 16,
-                paddingHorizontal: 20,
-                flexDirection: "row",
-                alignItems: "center",
-              }}
-              onPress={() => setSaveModalVisible(false)}
-            >
-              <Ionicons name="close-circle-outline" size={22} color="#333" />
-              <Text style={{ marginLeft: 12, fontSize: 16 }}>Annulla</Text>
-            </TouchableOpacity>
-          </View>
-        </Modal>
-      </SafeAreaView>
-    </ImageBackground>
+          {/* BARRA FISSA PROCEDIMENTO */}
+          {activeTab === "procedimento" && (
+            <View style={styles.fixedStepsBar}>
+              <TouchableOpacity
+                style={{ marginRight: 10, alignItems: "center" }}
+                onPress={() =>
+                  setSteps((prev) => [
+                    ...prev,
+                    {
+                      title: "",
+                      description: "",
+                      imageUri: null,
+                      textImageUri: null,
+                      collapsed: false,
+                      actionsOpen: false,
+                    },
+                  ])
+                }
+              >
+                <Ionicons
+                  name="add-circle-outline"
+                  size={18}
+                  color={COLORS.textLight}
+                />
+                <Text style={{ color: COLORS.textLight, fontSize: 10 }}>
+                  Aggiungi passaggio
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </TouchableWithoutFeedback>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    marginBottom: 0,
+    backgroundColor: "white",
+    lineHeight: 30,
   },
 
   bg: {
     flex: 1,
     width: "100%",
     height: "100%",
+    backgroundColor: "#ffffff",
   },
 
   header: {
@@ -2903,10 +3411,12 @@ const styles = StyleSheet.create({
 
   tagsContainer: {
     flexDirection: "row",
-    flexWrap: "wrap",
     justifyContent: "center",
-    gap: 8,
-    marginBottom: 20,
+    gap: 7,
+    alignItems: "center",
+    backgroundColor: "#fff",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
 
   tag: {
@@ -2914,6 +3424,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
+    marginBottom: 12,
   },
 
   tagText: {
@@ -2929,25 +3440,22 @@ const styles = StyleSheet.create({
     fontFamily: "Outfit-SemiBold",
   },
 
-  infoInput: {
-    flex: 1,
-    marginLeft: 3,
-    paddingVertical: 4,
-  },
-
   infoInputSmall: {
     width: 90,
     marginLeft: 3,
     paddingVertical: 4,
     textAlign: "center",
+    marginTop: 6,
   },
 
   tagInput: {
-    marginBottom: 10,
     paddingVertical: 6,
+    textAlignVertical: "center",
   },
 
   tagsList: {
+    paddingVertical: 6,
+
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
@@ -2958,19 +3466,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
 
-  notesInlineText: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: "#444",
-    marginTop: 6,
-  },
-
   notesInput: {
-    paddingVertical: 10,
-    paddingHorizontal: 15,
+    marginHorizontal: 10,
+    padding: 20,
     minHeight: 80,
     fontSize: 15,
-    lineHeight: 22,
+    lineHeight: 30,
     textAlignVertical: "top",
     color: "#333",
   },
@@ -2991,22 +3492,22 @@ const styles = StyleSheet.create({
   },
 
   heroPlaceholder: {
+    marginTop: 20,
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f0f0f0",
+    // backgroundColor: "#f0f0f0",
   },
 
   heroPlaceholderText: {
-    marginTop: 8,
     color: "#676767",
     fontSize: 12,
   },
 
   deleteMainSmallButton: {
     position: "absolute",
-    top: 10,
-    right: 10,
+    top: 5,
+    right: 5,
     zIndex: 20,
     backgroundColor: "white",
     borderRadius: 20,
@@ -3026,7 +3527,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 24,
-    paddingBottom: 30,
+    paddingBottom: 220,
     marginTop: -40,
     shadowColor: "#000",
     shadowOpacity: 0.08,
@@ -3078,8 +3579,8 @@ const styles = StyleSheet.create({
   },
 
   tabLabel: {
-    fontSize: 16,
-    color: "#777",
+    fontSize: 18,
+    color: "#8c8c8c",
   },
 
   tabLabelActive: {
@@ -3092,7 +3593,7 @@ const styles = StyleSheet.create({
   sectionWrapper: {
     paddingHorizontal: 10,
     paddingTop: 10,
-    paddingBottom: 40,
+    paddingBottom: 120,
   },
 
   /* ============================================================
@@ -3157,60 +3658,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 3,
-  },
-
-  /* ============================================================
-     FLOATING BUTTONS
-  ============================================================ */
-  floatingPlus: {
-    position: "absolute",
-    bottom: 90,
-    right: 25,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.primary,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-    zIndex: 999,
-  },
-
-  /* ============================================================
-     POPOVER iOS
-  ============================================================ */
-  popover: {
-    backgroundColor: "white",
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-  },
-
-  fab: {
-    position: "absolute",
-    bottom: 70,
-    right: 25,
-    width: 40,
-    height: 40,
-    borderRadius: 28,
-    backgroundColor: COLORS.primary,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 10,
-    zIndex: 9999,
   },
 
   /* ============================================================
@@ -3459,158 +3906,20 @@ const styles = StyleSheet.create({
     marginTop: -1,
   },
 
-  /* FAB ELLIPSIS */
-  fabEllipsis: {
-    width: 40,
-    height: 40,
-    borderRadius: 28,
-    backgroundColor: COLORS.primary,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 10,
-    zIndex: 9999,
-  },
-
-  /* POPOVER OVERLAY */
-  popoverOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "transparent",
-    zIndex: 998,
-  },
-
-  /* POPOVER */
-  popoverWrapper: {
-    position: "absolute",
-    bottom: 100,
-    right: 25,
-    zIndex: 999,
-    alignItems: "flex-end",
-  },
-
-  rowPopoverWrapper: {
-    position: "absolute",
-    right: 10,
-    top: 40,
-    zIndex: 999,
-    alignItems: "flex-end",
-  },
-
-  popoverBox: {
-    backgroundColor: "white",
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-
-  popoverItem: {
-    paddingVertical: 8,
-  },
-
-  popoverText: {
-    fontSize: 14,
-    color: COLORS.text,
-  },
-
-  popoverArrow: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 8,
-    borderRightWidth: 8,
-    borderBottomWidth: 8,
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
-    borderBottomColor: "white",
-    marginTop: -1,
-  },
-
-  /* RAGGRUPPA */
-  groupingBanner: {
-    padding: 12,
-    backgroundColor: "#fff4fa",
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-
-  groupingText: {
-    fontSize: 14,
-    color: COLORS.secondary,
-    fontWeight: "600",
-  },
-
-  groupCreateBox: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: "white",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#eee",
-  },
-
-  groupCreateLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 6,
-  },
-
-  groupInput: {
-    marginBottom: 10,
-  },
-
-  groupCreateBtn: {
-    backgroundColor: COLORS.secondary,
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: "center",
-    marginBottom: 12,
-  },
-
-  groupCreateBtnText: {
-    color: "white",
-    fontWeight: "600",
-  },
-
-  groupExistingBtn: {
-    paddingVertical: 8,
-  },
-
-  groupExistingBtnText: {
-    fontSize: 14,
-    color: COLORS.text,
-  },
-
   ingredientRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: "white",
+    paddingVertical: 0,
     borderRadius: 12,
-    marginBottom: 10,
-    marginHorizontal: 10,
-    borderWidth: 1,
-    borderColor: "#eee",
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    marginBottom: -5,
+    // marginHorizontal: 10,
+    // marginLeft: 10,
+    // marginRight: -20,
+    // paddingHorizontal: 10,
   },
 
   ingredientSelected: {
-    backgroundColor: "#ffe8f2",
+    backgroundColor: "white",
     borderColor: COLORS.secondary,
   },
 
@@ -3618,6 +3927,7 @@ const styles = StyleSheet.create({
     padding: 6,
     borderRadius: 20,
     zIndex: 20,
+    marginBottom: 10,
   },
 
   ingredientActionsOverlay: {
@@ -3625,15 +3935,15 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     right: 40,
-    left: 0,
+    left: -20,
     backgroundColor: "white",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: "white",
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 0,
     zIndex: 10,
   },
 
@@ -3645,7 +3955,7 @@ const styles = StyleSheet.create({
 
   ingredientActionLabel: {
     fontSize: 11,
-    marginTop: 4,
+    marginTop: 2,
     color: COLORS.text,
     textAlign: "center",
   },
@@ -3657,28 +3967,34 @@ const styles = StyleSheet.create({
   },
 
   groupCard: {
-    borderWidth: 2,
-    borderColor: "#ccc",
-    borderRadius: 12,
-    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#eee",
     paddingTop: 10,
-    backgroundColor: "#fafafa",
+    paddingBottom: 10,
+    backgroundColor: "white",
+    justifyContent: "center",
+    marginLeft: -20,
+    marginRight: -20,
+    marginTop: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    elevation: 2,
   },
 
   checkboxWrapper: {
     width: 26,
     height: 26,
     borderRadius: 6,
-    borderWidth: 2,
-    borderColor: "#ccc",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 10,
+    marginBottom: 15,
+    marginLeft: 10,
     backgroundColor: "white",
   },
 
   checkboxSelected: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: "white",
     borderColor: COLORS.primary,
   },
 
@@ -3687,10 +4003,14 @@ const styles = StyleSheet.create({
     borderColor: "#ccc",
   },
 
+  categoriesWrapper: {
+    paddingVertical: 5,
+  },
+
   fabSave: {
     position: "absolute",
-    top: 45,
-    left: 15,
+    top: 10,
+    left: 20,
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 30,
@@ -3701,7 +4021,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    elevation: 8,
     zIndex: 999,
   },
 
@@ -3710,5 +4030,236 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontWeight: "600",
     marginTop: 2,
+  },
+
+  fixedIngredientsBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "white",
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderColor: "#ddd",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    zIndex: 9999,
+  },
+
+  fixedStepsBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "white",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderColor: "#ddd",
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    zIndex: 9999,
+  },
+
+  groupActionsOverlay: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 10,
+    right: 0,
+    backgroundColor: "white",
+    borderRadius: 12,
+
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    zIndex: 9999,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  groupActionsCloseBtn: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    padding: 6,
+    zIndex: 30,
+  },
+
+  groupActionsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 40,
+    marginVertical: 10,
+  },
+
+  groupActionBtn: {
+    justifyContent: "center",
+    alignItems: "center",
+    width: 70,
+  },
+
+  groupDividerHorizontal: {
+    width: "60%",
+    height: 1,
+    backgroundColor: "#ddd",
+    marginVertical: 10,
+  },
+
+  groupDividerVertical: {
+    position: "absolute",
+    top: "20%",
+    bottom: "20%",
+    left: "55%",
+    width: 1,
+    backgroundColor: "#ddd",
+  },
+  stepActionBtnCollapsed: {
+    width: 60,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+    paddingVertical: 6,
+  },
+
+  stepActionLabelCollapsed: {
+    fontSize: 10,
+    color: COLORS.textLight,
+    marginTop: 2,
+  },
+
+  stepDividerVertical: {
+    width: 1,
+    height: "60%",
+    backgroundColor: "#ddd",
+  },
+
+  /* ⭐ COLLASSATA */
+  rowCollapsed: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    marginBottom: 25,
+    marginRight: 14,
+  },
+
+  /* ⭐ ESPANSA */
+  expandedGrid: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  expandedRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    borderColor: "#eee",
+    borderBottomWidth: 1,
+  },
+
+  actionExpanded: {
+    width: 110,
+    backgroundColor: "#fff",
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderColor: "#eee",
+  },
+
+  actionExpandedDanger: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  actionExpandedText: {
+    fontSize: 10,
+    color: COLORS.textLight,
+  },
+
+  stepOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(255,255,255,0.97)",
+    borderRadius: 14,
+    paddingTop: 40,
+    paddingHorizontal: 20,
+    zIndex: 50,
+
+    // ⭐ Per centrare verticalmente il contenuto
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  stepDividerVerticalTop: {
+    width: 1,
+    height: 60,
+    backgroundColor: "#eee",
+  },
+  stepOverlayCloseBtn: {
+    position: "absolute",
+    top: 30,
+    right: 10,
+    padding: 6,
+    zIndex: 60,
+  },
+
+  emptyIngredientsWrapper: {
+    width: "90%",
+    paddingVertical: 60,
+    alignItems: "center",
+    justifyContent: "center",
+    opacity: 0.7,
+  },
+
+  emptyIngredientsText: {
+    fontSize: 18,
+    fontFamily: "Outfit-SemiBold",
+    color: COLORS.textLight,
+    marginBottom: 6,
+    textAlign: "center",
+  },
+
+  emptyIngredientsSub: {
+    fontSize: 14,
+    fontFamily: "Outfit-Regular",
+    color: COLORS.textLight,
+    marginBottom: 20,
+    textAlign: "center",
+  },
+
+  infoColumn: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
+
+  labelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+
+  label: {
+    fontSize: 16,
+    marginRight: 2,
+    color: COLORS.text,
+    marginBottom: 17,
+  },
+
+  infoInput: {
+    minWidth: 100,
+    textAlign: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: "#fff",
+    borderRadius: 30,
+    fontSize: 16,
+    textAlignVertical: "center",
   },
 });

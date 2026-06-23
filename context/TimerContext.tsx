@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
 import * as Notifications from "expo-notifications";
 import { createContext, useContext, useEffect, useState } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 
 export type Timer = {
   id: string;
@@ -13,7 +13,7 @@ export type Timer = {
   isPaused: boolean;
   endTime: number | null;
   notificationId?: string | null;
-  hasNotified?: boolean; // ⭐ evita doppio suono
+  hasNotified?: boolean;
 };
 
 type TimerContextType = {
@@ -33,10 +33,16 @@ export const useTimers = () => useContext(TimerContext);
 export function TimerProvider({ children }: any) {
   const [timers, setTimers] = useState<Timer[]>([]);
 
+  const [appState, setAppState] = useState(AppState.currentState);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", setAppState);
+    return () => sub.remove();
+  }, []);
+
   // ==================== NOTIFICHE ====================
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldShowAlert: true,
       shouldPlaySound: true,
       shouldSetBadge: false,
       shouldShowBanner: true,
@@ -44,15 +50,12 @@ export function TimerProvider({ children }: any) {
     }),
   });
 
-  // Canale Android
   useEffect(() => {
     if (Platform.OS === "android") {
       Notifications.setNotificationChannelAsync("timer-channel", {
         name: "Timer",
         importance: Notifications.AndroidImportance.HIGH,
         sound: "default",
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: "#FF231F7C",
       });
     }
   }, []);
@@ -65,10 +68,8 @@ export function TimerProvider({ children }: any) {
         sound: "default",
       },
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-        seconds,
-        repeats: false,
-        channelId: "timer-channel",
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: new Date(Date.now() + seconds * 1000),
       },
     });
   }
@@ -100,27 +101,37 @@ export function TimerProvider({ children }: any) {
     AsyncStorage.setItem("timers", JSON.stringify(timers));
   }, [timers]);
 
-  // Richiesta permessi
+  // Permessi
   useEffect(() => {
     (async () => {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== "granted") {
-        console.log("Permessi notifica NON concessi");
-      }
+      await Notifications.requestPermissionsAsync();
     })();
   }, []);
 
+  useEffect(() => {
+    if (appState === "active") {
+      timers.forEach((t) => {
+        if (t.notificationId) {
+          cancelNotification(t.notificationId);
+        }
+      });
+    }
+  }, [appState]);
+
+  // Quick timer auto-create
   useEffect(() => {
     setTimers((prev) => {
       const exists = prev.some((t) => t.id === "quick");
       if (exists) return prev;
 
+      const initial = 300; // ⭐ 5 minuti di default
+
       return [
         {
           id: "quick",
           title: "Quick Timer",
-          duration: 0,
-          remainingSeconds: 0,
+          duration: initial,
+          remainingSeconds: initial,
           isRunning: false,
           isPaused: false,
           endTime: null,
@@ -155,6 +166,7 @@ export function TimerProvider({ children }: any) {
 
     const endTime = Date.now() + timer.remainingSeconds * 1000;
 
+    // ⭐ Scheduliamo SEMPRE la notifica
     const notificationId = await scheduleTimerNotification(
       timer.remainingSeconds,
       timer.title,
@@ -169,7 +181,7 @@ export function TimerProvider({ children }: any) {
               isPaused: false,
               endTime,
               notificationId,
-              hasNotified: false, // ⭐ reset
+              hasNotified: false,
             }
           : t,
       ),
@@ -225,7 +237,7 @@ export function TimerProvider({ children }: any) {
               isPaused: false,
               endTime,
               notificationId,
-              hasNotified: false, // ⭐ reset
+              hasNotified: false,
             }
           : t,
       ),
@@ -276,30 +288,19 @@ export function TimerProvider({ children }: any) {
             Math.floor((t.endTime - Date.now()) / 1000),
           );
 
-          // ⭐ Timer già finito nel passato → NON suonare di nuovo
-          if (t.endTime && Date.now() > t.endTime && !t.hasNotified) {
-            return {
-              ...t,
-              remainingSeconds: 0,
-              isRunning: false,
-              isPaused: false,
-              endTime: null,
-              notificationId: null,
-              hasNotified: true,
-            };
-          }
+          if (remaining === 0 && !t.hasNotified) {
+            playSound();
 
-          // ⭐ Timer che finisce ORA
-          if (remaining === 0) {
-            if (!t.hasNotified) {
-              playSound();
+            // ⭐ Cancella la notifica se l’app è in foreground
+            if (t.notificationId) {
+              cancelNotification(t.notificationId);
             }
 
             return {
               ...t,
+              remainingSeconds: 0,
               isRunning: false,
               isPaused: false,
-              remainingSeconds: 0,
               endTime: null,
               notificationId: null,
               hasNotified: true,

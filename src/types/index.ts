@@ -40,7 +40,8 @@ export interface Recipe {
   id: string;
   title: string;
   category: Category;
-  prepTime: number;
+  prepTime: string;
+  cookTime: string;
   servings: number;
   imageUri?: string;
   tags?: string[];

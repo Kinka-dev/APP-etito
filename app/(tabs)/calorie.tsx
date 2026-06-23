@@ -1,16 +1,18 @@
+import BatteryFill from "@/components/BatteryFill";
 import IngredientMacro from "@/components/IngredientMacro";
 import Input from "@/components/Input";
 import PieChart from "@/components/PieChart";
 import Text from "@/components/Text";
 import { COLORS } from "@/constants/colors";
 import { useRecipeContext } from "@/context/RecipeContext";
-import { useCountUp } from "@/hooks/useCountUp";
 import { useIngredientSearch } from "@/hooks/useIngredientSearch";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  ImageBackground,
+  Animated,
+  Easing,
+  Image,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -18,9 +20,42 @@ import {
 } from "react-native";
 import { calculateMacros } from "../data/nutritionDB";
 
+// ⭐ Hook semplice per countUp + countDown (interi)
+function useCounter(value: number, duration = 600) {
+  const [display, setDisplay] = useState(Math.round(value));
+
+  useEffect(() => {
+    const target = Math.round(value);
+    if (target === display) return;
+
+    const diff = target - display;
+    const steps = Math.min(Math.abs(diff), 40); // max 40 step per non esagerare
+    const stepValue = diff / steps;
+    const stepTime = duration / steps;
+
+    let current = display;
+    let count = 0;
+
+    const id = setInterval(() => {
+      count++;
+      current += stepValue;
+      if (count >= steps) {
+        setDisplay(target);
+        clearInterval(id);
+      } else {
+        setDisplay(Math.round(current));
+      }
+    }, stepTime);
+
+    return () => clearInterval(id);
+  }, [value]);
+
+  return display;
+}
+
 export default function CalorieCalculatorScreen() {
   const { id } = useLocalSearchParams();
-  const { recipes, updateRecipe } = useRecipeContext();
+  const { recipes } = useRecipeContext();
 
   const recipe = recipes.find((r) => r.id === id);
 
@@ -33,16 +68,24 @@ export default function CalorieCalculatorScreen() {
   const [totalCarbs, setTotalCarbs] = useState(0);
   const [totalProtein, setTotalProtein] = useState(0);
   const [totalFat, setTotalFat] = useState(0);
+  const [totalWeight, setTotalWeight] = useState(0);
 
   const [kcalPerServing, setKcalPerServing] = useState(0);
   const { query, setQuery, results, onSelect } = useIngredientSearch();
 
-  // ⭐ Calcolo calorie + macro totali
+  // ⭐ refs per scroll morbido
+  const scrollRef = useRef<ScrollView>(null);
+  const [totalsY, setTotalsY] = useState(0);
+
+  const [prevKcal, setPrevKcal] = useState(0);
+
+  // ⭐ Calcolo calorie + macro + peso totale
   useEffect(() => {
     let kcalSum = 0;
     let carbSum = 0;
     let proteinSum = 0;
     let fatSum = 0;
+    let weightSum = 0;
 
     ingredients.forEach((ing) => {
       const name = ing.name.toLowerCase().trim();
@@ -54,6 +97,8 @@ export default function CalorieCalculatorScreen() {
       carbSum += macros.carbs;
       proteinSum += macros.protein;
       fatSum += macros.fat;
+
+      weightSum += Number(ing.quantity) || 0;
     });
 
     setTotalKcal(kcalSum);
@@ -61,17 +106,36 @@ export default function CalorieCalculatorScreen() {
     setTotalProtein(proteinSum);
     setTotalFat(fatSum);
 
+    setTotalWeight(weightSum);
+
     const servings = recipe?.servings ?? 1;
     setKcalPerServing(kcalSum / servings);
   }, [ingredients]);
 
-  // ⭐ Count-up totali
-  const totalKcalAnim = useCountUp(totalKcal, 700);
-  const totalCarbsAnim = useCountUp(totalCarbs, 700);
-  const totalProteinAnim = useCountUp(totalProtein, 700);
-  const totalFatAnim = useCountUp(totalFat, 700);
-  const kcalPerServingAnim = useCountUp(Math.round(kcalPerServing), 700);
+  // ⭐ Animazione pila calorie (più morbida in su/giù)
+  const totalKcalAnim = useRef(new Animated.Value(0)).current;
 
+  useEffect(() => {
+    const isDecreasing = totalKcal < prevKcal;
+
+    Animated.timing(totalKcalAnim, {
+      toValue: totalKcal,
+      duration: isDecreasing ? 600 : 1200,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+
+    setPrevKcal(totalKcal);
+  }, [totalKcal]);
+
+  // ⭐ CountUp + CountDown numerico per testo e labelBox
+  const totalKcalDisplay = useCounter(totalKcal);
+  const totalCarbsDisplay = useCounter(totalCarbs);
+  const totalProteinDisplay = useCounter(totalProtein);
+  const totalFatDisplay = useCounter(totalFat);
+  const kcalPerServingDisplay = useCounter(kcalPerServing);
+
+  // ⭐ Aggiungi ingrediente + scroll morbido
   const addIngredient = () => {
     if (!newIngName || !newIngQty) return;
 
@@ -88,20 +152,32 @@ export default function CalorieCalculatorScreen() {
     setNewIngName("");
     setNewIngQty("");
     setQuery("");
+
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({
+        y: totalsY - 40,
+        animated: true,
+      });
+    }, 100);
   };
 
-  const hasPie = totalCarbs + totalProtein + totalFat > 0;
-
   return (
-    <ImageBackground
-      source={require("../../assets/images/sfondo9.png")}
-      style={styles.bg}
-      resizeMode="cover"
+    <ScrollView
+      ref={scrollRef}
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: 40 }}
     >
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={{ paddingBottom: 40 }}
-      >
+      {/* HEADER + ADD SECTION */}
+      <View>
+        <Image
+          source={require("../../assets/images/fragola.png")}
+          style={{
+            width: 150,
+            height: 110,
+            alignSelf: "center",
+            marginTop: 20,
+          }}
+        />
         <Text bold style={styles.title}>
           Calcolatore Calorie & Macro
         </Text>
@@ -112,12 +188,13 @@ export default function CalorieCalculatorScreen() {
 
         {/* ⭐ Sezione aggiungi ingrediente */}
         <View style={styles.addBox}>
-          {/* RIGA 1 */}
-          <View style={styles.rowTop}>
+          <View style={styles.rowSingleLine}>
+            {/* INGREDIENTE + DROPDOWN */}
             <View style={styles.nameWrapper}>
               <Input
                 placeholder="Ingrediente"
                 value={newIngName}
+                multiline
                 onChangeText={(text) => {
                   setNewIngName(text);
                   setQuery(text);
@@ -144,58 +221,80 @@ export default function CalorieCalculatorScreen() {
               )}
             </View>
 
-            <TouchableOpacity style={styles.addBtn} onPress={addIngredient}>
-              <Ionicons name="add" size={22} color="white" />
-            </TouchableOpacity>
-          </View>
-
-          {/* RIGA 2 */}
-          <View style={styles.rowBottom}>
+            {/* QTY */}
             <Input
-              placeholder="Quantità"
+              placeholder="Qty"
               value={newIngQty}
               onChangeText={setNewIngQty}
               keyboardType="numeric"
-              style={styles.qtyInput}
+              style={styles.qtyInputInline}
             />
 
+            {/* UNIT */}
             <Input
               placeholder="g"
               value={newIngUnit}
               onChangeText={setNewIngUnit}
-              style={styles.unitInput}
+              style={styles.unitInputInline}
             />
+
+            {/* ADD BUTTON */}
+            <TouchableOpacity
+              style={styles.addBtnInline}
+              onPress={addIngredient}
+            >
+              <Ionicons name="add" size={22} color="white" />
+            </TouchableOpacity>
           </View>
         </View>
+      </View>
 
-        {/* ⭐ Lista ingredienti */}
-        {ingredients.map((ing) => (
-          <IngredientMacro
-            key={ing.id}
-            ing={ing}
-            onDelete={() =>
-              setIngredients((prev) => prev.filter((i) => i.id !== ing.id))
-            }
-          />
-        ))}
+      {/* ⭐ Lista ingredienti */}
+      {ingredients.map((ing) => (
+        <IngredientMacro
+          key={ing.id}
+          ing={ing}
+          onDelete={() =>
+            setIngredients((prev) => prev.filter((i) => i.id !== ing.id))
+          }
+        />
+      ))}
 
-        {/* ⭐ Totali */}
-        <View style={styles.summaryBox}>
-          <Text bold style={styles.summaryText}>
-            Calorie totali: {totalKcalAnim} kcal
+      {/* ⭐ Totali */}
+      <View
+        style={styles.summaryBox}
+        onLayout={(e) => setTotalsY(e.nativeEvent.layout.y)}
+      >
+        <Text bold style={styles.summaryText}>
+          Totale:
+        </Text>
+        <View
+          style={{
+            flexDirection: "row",
+            marginTop: 10,
+            marginBottom: 10,
+            justifyContent: "center",
+          }}
+        >
+          <BatteryFill animValue={totalKcalAnim} />
+          <Text
+            bold
+            style={[styles.summaryText, { marginTop: 15, marginLeft: 5 }]}
+          >
+            {totalKcalDisplay} kcal
           </Text>
-
-          <View style={{ marginVertical: 20 }}>
-            <PieChart
-              carbs={totalCarbs}
-              protein={totalProtein}
-              fat={totalFat}
-              size={130}
-            />
-          </View>
         </View>
-      </ScrollView>
-    </ImageBackground>
+
+        <View style={{ marginVertical: 20, alignItems: "center" }}>
+          <PieChart
+            carbs={totalCarbsDisplay}
+            protein={totalProteinDisplay}
+            fat={totalFatDisplay}
+            totalWeight={totalWeight}
+          />
+        </View>
+      </View>
+    </ScrollView>
   );
 }
 
@@ -203,6 +302,7 @@ const styles = StyleSheet.create({
   container: {
     padding: 40,
     paddingBottom: 20,
+    backgroundColor: "white",
   },
 
   title: {
@@ -210,7 +310,6 @@ const styles = StyleSheet.create({
     color: "black",
     textAlign: "center",
     marginBottom: 15,
-    marginTop: 60,
     paddingHorizontal: 40,
     lineHeight: 30,
   },
@@ -231,53 +330,19 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     fontFamily: "Outfit-Regular",
     color: COLORS.text,
+    textAlignVertical: "center",
   },
 
-  addBtn: {
-    backgroundColor: COLORS.primary,
-    padding: 10,
-    borderRadius: 30,
-    alignSelf: "flex-start",
-  },
-
-  ingRow: {
-    flexDirection: "row",
+  addBox: {
+    width: "100%",
     alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderColor: "#eee",
-    gap: 10,
+    justifyContent: "center",
   },
 
-  ingName: { fontSize: 15, color: COLORS.text },
-  ingQty: { color: COLORS.textLight },
-  ingMacro: { fontSize: 12, color: COLORS.textLight, marginTop: 2 },
-
-  summaryBox: {
-    marginTop: 20,
-    padding: 16,
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-  },
-
-  summaryText: {
-    fontSize: 20,
-    marginBottom: 6,
-    color: COLORS.text,
-    textAlign: "center",
-  },
-
-  saveBtn: {
-    marginTop: 40,
-    backgroundColor: COLORS.primary,
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-
-  saveText: {
-    color: "white",
-    textAlign: "center",
-    fontSize: 16,
+  nameWrapper: {
+    flex: 1,
+    position: "relative",
+    marginTop: 10,
   },
 
   suggestionBox: {
@@ -299,76 +364,85 @@ const styles = StyleSheet.create({
     borderColor: "#eee",
   },
 
-  macroRow: {
+  summaryBox: {
+    marginTop: 20,
+    padding: 16,
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+  },
+
+  summaryText: {
+    fontSize: 20,
+    marginBottom: 6,
+    color: COLORS.text,
+    textAlign: "center",
+  },
+
+  labelText: {
+    fontSize: 16,
+    color: COLORS.text,
+  },
+
+  rowSingleLine: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginTop: 4,
+    justifyContent: "center",
+    gap: 10,
   },
 
-  macroItem: {
-    flexDirection: "row",
+  qtyInputInline: {
+    width: 70,
+    backgroundColor: "#fff",
+    padding: 10,
+    borderRadius: 10,
+    fontSize: 16,
+    fontFamily: "Outfit-Regular",
+    color: COLORS.text,
+    textAlignVertical: "center",
+  },
+
+  unitInputInline: {
+    width: 40,
+    backgroundColor: "#fff",
+    padding: 10,
+    borderRadius: 10,
+    textAlign: "center",
+    fontSize: 16,
+    fontFamily: "Outfit-Regular",
+    color: COLORS.text,
+  },
+
+  addBtnInline: {
+    backgroundColor: COLORS.primary,
+    padding: 10,
+    borderRadius: 30,
+    justifyContent: "center",
     alignItems: "center",
-    gap: 4,
+    marginBottom: 15,
   },
-
-  macroText: {
-    fontSize: 12,
-    color: COLORS.textLight,
-  },
-
-  legendRow: {
+  labelsRow: {
     flexDirection: "row",
     justifyContent: "space-around",
-    marginTop: 10,
-    gap: 10,
-  },
-
-  legendItem: {
-    flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    fontSize: 10,
-  },
-
-  legendDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  addBox: {
     width: "100%",
-    gap: 10,
+    marginBottom: 10,
   },
 
-  rowTop: {
-    flexDirection: "row",
+  labelContainer: {
+    flex: 1,
     alignItems: "center",
-    gap: 10,
-    marginBottom: -20,
   },
 
-  nameWrapper: {
-    flex: 1,
-    position: "relative",
-  },
-
-  rowBottom: {
-    flexDirection: "row",
-    gap: 10,
-  },
-
-  qtyInput: {
-    flex: 1, // se vuoi ereditare lo stile base
-  },
-
-  unitInput: {
-    flex: 1,
-  },
-
-  bg: {
-    flex: 1,
-    width: "100%",
-    height: "100%",
+  labelBox: {
+    backgroundColor: "white",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
   },
 });

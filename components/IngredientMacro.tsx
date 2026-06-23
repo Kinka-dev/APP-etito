@@ -1,8 +1,18 @@
 import { calculateMacros } from "@/app/data/nutritionDB";
 import Text from "@/components/Text";
+import { COLORS } from "@/constants/colors";
 import { useCountUp } from "@/hooks/useCountUp";
 import { Ionicons } from "@expo/vector-icons";
-import { TouchableOpacity, View } from "react-native";
+import { useEffect } from "react";
+import { TouchableOpacity } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSequence,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 
 type IngredientRowProps = {
   ing: {
@@ -27,59 +37,126 @@ export default function IngredientMacro({ ing, onDelete }: IngredientRowProps) {
   const proteinAnim = useCountUp(Math.round(protein));
   const fatAnim = useCountUp(Math.round(fat));
 
+  // ⭐ Reanimated: ingressi + pop delete
+  const containerY = useSharedValue(-20);
+  const containerOpacity = useSharedValue(0);
+  const scale = useSharedValue(1);
+
+  const leftX = useSharedValue(-40);
+  const rightX = useSharedValue(40);
+
+  useEffect(() => {
+    containerY.value = withSpring(0, { damping: 14, stiffness: 120 });
+    containerOpacity.value = withTiming(1, { duration: 250 });
+
+    leftX.value = withTiming(0, { duration: 350 });
+
+    rightX.value = withDelay(80, withTiming(0, { duration: 350 }));
+  }, []);
+
+  const containerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: containerY.value }, { scale: scale.value }],
+    opacity: containerOpacity.value,
+  }));
+
+  const leftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: leftX.value }],
+  }));
+
+  const rightStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: rightX.value }],
+  }));
+
+  const handleDelete = () => {
+    // pop + fade
+    scale.value = withSequence(
+      withSpring(1.1, { damping: 10, stiffness: 200 }),
+      withTiming(0, { duration: 180 }),
+    );
+    containerOpacity.value = withTiming(0, { duration: 180 });
+
+    setTimeout(() => {
+      onDelete();
+    }, 200);
+  };
+
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        paddingVertical: 10,
-        borderBottomWidth: 1,
-        borderColor: "#eee",
-        gap: 10,
-      }}
+    <Animated.View
+      style={[
+        {
+          flexDirection: "row",
+          alignItems: "center",
+          paddingVertical: 12,
+          borderBottomWidth: 1,
+          borderColor: "#eee",
+          gap: 5,
+        },
+        containerStyle,
+      ]}
     >
-      <View style={{ flex: 1 }}>
-        <Text bold style={{ fontSize: 15 }}>
+      {/* COLONNA SINISTRA */}
+      <Animated.View style={[{ flex: 1 }, leftStyle]}>
+        <Text
+          bold
+          style={{
+            fontSize: 18,
+            textTransform: "capitalize",
+            marginBottom: 20,
+            marginTop: 20,
+          }}
+        >
           {ing.name}
         </Text>
-        <Text style={{ color: "#777" }}>
+
+        <Text
+          bold
+          style={{
+            fontSize: 25,
+            marginTop: 2,
+            lineHeight: 30,
+            color: COLORS.textLight,
+            marginBottom: 10,
+          }}
+        >
           {ing.quantity}
           {ing.unit}
         </Text>
+      </Animated.View>
 
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 12,
-            marginTop: 4,
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Ionicons name="flame-outline" size={14} color="#ff0000" />
-            <Text>{kcalAnim}</Text>
-          </View>
+      {/* COLONNA DESTRA (macro allineati a destra) */}
+      <Animated.View
+        style={[
+          {
+            minWidth: 120,
+            paddingLeft: 20,
+            alignItems: "flex-start",
+            justifyContent: "center",
+            borderLeftWidth: 1,
+            borderColor: "#eee",
+          },
+          rightStyle,
+        ]}
+      >
+        <Text style={{ fontSize: 12, color: "#777" }}>Kcal: {kcalAnim}</Text>
+        <Text style={{ fontSize: 12, color: "#777" }}>Carbs: {carbsAnim}g</Text>
+        <Text style={{ fontSize: 12, color: "#777" }}>
+          Proteine: {proteinAnim}g
+        </Text>
+        <Text style={{ fontSize: 12, color: "#777" }}>Grassi: {fatAnim}g</Text>
+      </Animated.View>
 
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Ionicons name="leaf-outline" size={14} color="#00a56e" />
-            <Text>{carbsAnim}g</Text>
-          </View>
-
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Ionicons name="fitness-outline" size={14} color="#b292ad" />
-            <Text>{proteinAnim}g</Text>
-          </View>
-
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Ionicons name="water-outline" size={14} color="#ffc800" />
-            <Text>{fatAnim}g</Text>
-          </View>
-        </View>
-      </View>
-
-      <TouchableOpacity onPress={onDelete}>
-        <Ionicons name="trash-outline" size={20} color="#cc0033" />
+      {/* DELETE BUTTON */}
+      <TouchableOpacity
+        onPress={handleDelete}
+        style={{
+          backgroundColor: "#cc0033",
+          padding: 10,
+          borderRadius: 30,
+          marginLeft: 10,
+        }}
+      >
+        <Ionicons name="trash-outline" size={20} color="#ffffff" />
       </TouchableOpacity>
-    </View>
+    </Animated.View>
   );
 }

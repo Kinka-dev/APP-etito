@@ -2,20 +2,20 @@
 import { nutritionIndex } from "@/app/data/nutritionIndex";
 import CategoryDropdown from "@/components/CategoryDropdown";
 import { CategoryItem } from "@/components/CategoryTabsCarousel";
+import { useChooseImageSource } from "@/components/chooseImageSource";
 import Input from "@/components/Input";
 import Text from "@/components/Text";
 import { CATEGORIES, CATEGORY_LABELS } from "@/constants/categories";
 import { COLORS } from "@/constants/colors";
 import { useRecipeContext } from "@/context/RecipeContext";
-import { useDynamicImageSize } from "@/hooks/useDynamicImageSize";
 import { Category, Recipe } from "@/src/types";
 import { Ionicons } from "@expo/vector-icons";
+import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import Fuse from "fuse.js";
 import React, { useEffect, useState } from "react";
 import {
-  ActionSheetIOS,
   Alert,
   Image,
   ImageBackground,
@@ -24,6 +24,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  Image as RNImage,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -41,13 +42,25 @@ import Animated, {
   FadeOutRight,
   FadeOutUp,
   interpolate,
+  interpolateColor,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
+  withSequence,
   withTiming,
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { nutritionDB } from "../data/nutritionDB";
+import { normalizeImage } from "../utils/normalizeImage";
+import {
+  extractCoreIngredientNameSmart,
+  findBestIngredientMatch,
+  normalizedNutritionIndex,
+  normalizeName,
+  SPECIAL_UNITS,
+} from "../utils/normalizeName";
 import { parseIngredientLine } from "../utils/parseIngredients";
+type IoniconName = keyof typeof Ionicons.glyphMap;
 
 const CATEGORY_ITEMS: CategoryItem[] = [
   {
@@ -60,40 +73,77 @@ const CATEGORY_ITEMS: CategoryItem[] = [
   })),
 ];
 
-function StepImage({
-  uri,
-  onPress,
-}: {
+type StepImageProps = {
   uri: string | null;
   onPress: () => void;
-}) {
-  const size = useDynamicImageSize(uri);
+};
 
+function StepImage({ uri, onPress }: StepImageProps) {
   return (
     <TouchableOpacity
-      activeOpacity={0.9}
       onPress={onPress}
-      style={styles.stepImageButtonExpanded}
+      style={{
+        width: "100%",
+        height: 200,
+        backgroundColor: "#f0f0f0",
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: "#eee",
+        overflow: "hidden",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
     >
       {uri ? (
-        <View style={styles.stepImageContainer}>
-          <Image
-            source={{ uri }}
-            style={[size, styles.stepImageExpanded]}
-            resizeMode="cover"
-          />
-        </View>
+        <Image
+          source={{ uri }}
+          style={{ width: "100%", height: "100%" }}
+          resizeMode="cover"
+        />
       ) : (
-        <View style={styles.stepImagePlaceholderExpanded}>
-          <Ionicons name="camera-outline" size={40} color={COLORS.secondary} />
-          <Text style={styles.stepImagePlaceholderTextExpanded}>
+        <>
+          <Ionicons name="camera-outline" size={50} color={COLORS.secondary} />
+          <Text style={styles.heroPlaceholderText}>
             Tocca per aggiungere immagine
           </Text>
-        </View>
+        </>
       )}
     </TouchableOpacity>
   );
 }
+
+const StepOcrPreview = ({ uri }: { uri: string }) => {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+
+  useEffect(() => {
+    RNImage.getSize(
+      uri,
+      (w: number, h: number) => setSize({ w, h }),
+      () => {},
+    );
+  }, [uri]);
+
+  if (!size) return null;
+
+  const MAX_WIDTH = 300;
+  const displayW = MAX_WIDTH;
+  const displayH = (size.h / size.w) * MAX_WIDTH;
+
+  return (
+    <View style={{ alignItems: "center", marginTop: 10 }}>
+      <ExpoImage
+        source={{ uri }}
+        style={{
+          width: displayW,
+          height: displayH,
+          borderRadius: 12,
+          backgroundColor: "#eee",
+        }}
+        contentFit="cover"
+      />
+    </View>
+  );
+};
 
 /* ============================================================
    TIPI
@@ -152,14 +202,15 @@ export default function AddRecipeScreen() {
 
   const [title, setTitle] = useState("");
   const [prepTime, setPrepTime] = useState("");
+  const [cookTime, setCookTime] = useState("");
   const [servings, setServings] = useState("");
+
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [mainImageUri, setMainImageUri] = useState<string | null>(null);
 
   const [notesText, setNotesText] = useState("");
   const [notesImage, setNotesImage] = useState<string | null>(null);
-  const [notesHeight, setNotesHeight] = useState(80);
 
   const [activeTab, setActiveTab] = useState<"ingredienti" | "procedimento">(
     "ingredienti",
@@ -168,10 +219,7 @@ export default function AddRecipeScreen() {
     null,
   );
 
-  const [showPopover, setShowPopover] = useState(false);
-  const [isScrolling, setIsScrolling] = useState(false);
-  const [showIngredientFab, setShowIngredientFab] = useState(false);
-  const [openStepMenu, setOpenStepMenu] = useState<number | null>(null);
+  const [openStepOverlay, setOpenStepOverlay] = useState<number | null>(null);
 
   const [ingredients, setIngredients] = useState<IngredientFlat[]>([]);
   const [groups, setGroups] = useState<GroupFlat[]>([]);
@@ -179,7 +227,6 @@ export default function AddRecipeScreen() {
   const [openIngredientActions, setOpenIngredientActions] = useState<
     string | null
   >(null);
-  const [openIngredientsMenu, setOpenIngredientsMenu] = useState(false);
   const [openActions, setOpenActions] = useState<string | null>(null);
 
   const [groupingMode, setGroupingMode] = useState(false);
@@ -198,33 +245,117 @@ export default function AddRecipeScreen() {
   );
   const [newGroupTitle, setNewGroupTitle] = useState("");
 
-  const [editorVisible, setEditorVisible] = useState(false);
-  const [imageToEdit, setImageToEdit] = useState<string | null>(null);
+  const [currentStepIndex, setCurrentStepIndex] = useState<number | null>(null);
+
+  const [cropSize, setCropSize] = useState<{ w: number; h: number } | null>(
+    null,
+  );
+  const MAX_WIDTH = 300;
+
+  const displayW = MAX_WIDTH;
+  const displayH = cropSize ? (cropSize.h / cropSize.w) * MAX_WIDTH : 0;
 
   const fadeIn = useSharedValue(0);
   const slideUp = useSharedValue(0);
 
-  const StepEllipsisButton = ({ onPress }: { onPress: () => void }) => (
-    <Pressable
-      onPress={onPress}
-      hitSlop={10} // area di touch controllata
-      style={{
-        padding: 6,
-        borderRadius: 8,
-        justifyContent: "center",
-        alignItems: "center",
-      }}
-      pointerEvents="box-only" // ⭐ fondamentale
-    >
-      <Ionicons name="ellipsis-vertical" size={20} color={COLORS.primary} />
-    </Pressable>
-  );
-
   const [ingredientsPhoto, setIngredientsPhoto] = useState<string | null>(null);
-  const ingPhotoStyle = useDynamicImageSize(ingredientsPhoto);
 
   const [showNewGroupModal, setShowNewGroupModal] = useState(false);
-  const [tempGroupTitle, setTempGroupTitle] = useState("");
+
+  const chooseImage = useChooseImageSource((croppedUri) => {
+    setMainImageUri(croppedUri);
+  });
+
+  const chooseStepImage = async (index: number) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 1,
+      exif: true,
+    });
+
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+
+    // ⭐ Normalizzazione completa (EXIF + resize coerente)
+    const normalizedUri = await normalizeImage(asset.uri);
+
+    // ⭐ Callback per salvare l’immagine ritagliata
+    globalThis._onCrop = (finalUri: string) => {
+      setSteps((prev) =>
+        prev.map((s, i) => (i === index ? { ...s, imageUri: finalUri } : s)),
+      );
+    };
+
+    // ⭐ Apri il CropScreen SENZA parametri che forzano zoom
+    router.push({
+      pathname: "/CropScreen",
+      params: { uri: normalizedUri },
+    });
+  };
+
+  const chooseOCRImage = async (index: number) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 1,
+      exif: true,
+    });
+
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+
+    // ⭐ Normalizzazione completa (EXIF + resize coerente)
+    const normalizedUri = await normalizeImage(asset.uri);
+
+    // ⭐ Callback globale per il CropScreen OCR
+    globalThis._onCropStepOcr = async (finalUri: string) => {
+      // 1) salva l’immagine ritagliata
+      setSteps((prev) =>
+        prev.map((s, i) =>
+          i === index ? { ...s, textImageUri: finalUri } : s,
+        ),
+      );
+
+      // 2) estrai il testo
+      const text = await extractTextFromImage(finalUri);
+
+      // 3) salva il testo nella descrizione dello step
+      setSteps((prev) =>
+        prev.map((s, i) => (i === index ? { ...s, description: text } : s)),
+      );
+    };
+
+    // ⭐ Apri il CropScreen OCR
+    router.push({
+      pathname: "/StepOcrCropScreen",
+      params: { uri: normalizedUri },
+    });
+  };
+
+  const chooseIngredientsPhoto = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 1,
+      exif: true,
+    });
+
+    if (result.canceled) return;
+
+    const normalized = await normalizeImage(result.assets[0].uri);
+
+    globalThis._onCropIngredient = async (finalUri: string) => {
+      setIngredientsPhoto(finalUri);
+
+      const text = await extractTextFromImage(finalUri);
+      parseIngredientsFromText(text);
+    };
+
+    router.push({
+      pathname: "/IngredientCropScreen",
+      params: { uri: normalized },
+    });
+  };
 
   const allIngredients = Object.values(nutritionDB).flatMap((category) =>
     Object.entries(category).map(([name, data]) => ({
@@ -242,6 +373,19 @@ export default function AddRecipeScreen() {
   /* ============================================================
      INGREDIENTI
   ============================================================ */
+
+  useEffect(() => {
+    if (!ingredientsPhoto) return;
+
+    RNImage.getSize(
+      ingredientsPhoto,
+      (w: number, h: number) => {
+        setCropSize({ w, h });
+      },
+      (error) => console.log("Error loading image size:", error),
+    );
+  }, [ingredientsPhoto]);
+
   useEffect(() => {
     setIngredients((prev) =>
       prev.map((i) => ({
@@ -371,21 +515,28 @@ export default function AddRecipeScreen() {
   };
 
   const createNewGroup = (title: string) => {
-    if (!title.trim() || selectedIngredients.length === 0) return;
+    if (!title.trim()) return;
 
     const newGroupId = uid();
 
+    // 1️⃣ crea SEMPRE il gruppo
     setGroups((prev) => [
       ...prev,
       { id: newGroupId, type: "group", title, collapsed: false },
     ]);
 
-    setIngredients((prev) =>
-      prev.map((i) =>
-        selectedIngredients.includes(i.id) ? { ...i, groupId: newGroupId } : i,
-      ),
-    );
+    // 2️⃣ se ci sono ingredienti selezionati → assegnali
+    if (selectedIngredients.length > 0) {
+      setIngredients((prev) =>
+        prev.map((i) =>
+          selectedIngredients.includes(i.id)
+            ? { ...i, groupId: newGroupId }
+            : i,
+        ),
+      );
+    }
 
+    // 3️⃣ reset
     setSelectedIngredients([]);
     setGroupingMode(false);
   };
@@ -532,36 +683,8 @@ export default function AddRecipeScreen() {
   };
 
   const handleOCRIngredients = () => {
-    chooseImageSource(async (uri) => {
-      if (!uri) return;
-
-      setIngredientsPhoto(uri);
-
-      const text = await extractTextFromImage(uri);
-      parseIngredientsFromText(text);
-    });
+    chooseIngredientsPhoto();
   };
-
-  function parseSpokenText(text: string) {
-    const regex =
-      /^(\d+(?:[.,]\d+)?)\s*(g|gr|grammi|kg|ml|l|litri|tsp|tbsp|cup|pz|pezzi)?\s*(.*)$/i;
-
-    const match = text.trim().match(regex);
-
-    if (!match) {
-      return {
-        quantity: "",
-        unit: "",
-        product: text.trim(),
-      };
-    }
-
-    return {
-      quantity: match[1] || "",
-      unit: match[2] || "",
-      product: match[3] || "",
-    };
-  }
 
   function parseIngredientsFromText(text: string) {
     if (!text.trim()) return;
@@ -576,19 +699,51 @@ export default function AddRecipeScreen() {
     for (const line of lines) {
       const { quantity, unit, name } = parseIngredientLine(line);
 
-      parsed.push({
+      const coreName = extractCoreIngredientNameSmart(name);
+      const normalizedName = normalizeName(coreName);
+
+      const matchedName = findBestIngredientMatch(normalizedName);
+
+      // ⭐ Base dell’ingrediente
+      let ingredient: IngredientFlat = {
         id: "ing-" + Math.random().toString(36).slice(2),
         type: "ingredient",
-        name: name || line,
+        name: matchedName || name || line,
         quantity:
           quantity === "" || quantity === null || quantity === undefined
             ? ""
             : Number(quantity),
-
         unit: unit || "",
-        groupId: null, // ⭐ ingredienti liberi → appaiono subito
-        linkedRecipeId: null, // ⭐ compatibile con il tipo
-      });
+        groupId: null,
+        linkedRecipeId: null,
+      };
+
+      // ⭐ Se abbiamo un match → applica macro
+      if (matchedName && ingredient.quantity) {
+        const data = normalizedNutritionIndex[matchedName];
+
+        if (!data) {
+          console.log("⚠️ Nessun dato nutrizionale per:", matchedName);
+        } else {
+          let grams = ingredient.quantity;
+
+          // ⭐ Se l’unità è speciale → converti in grammi
+          const unitNorm = normalizeName(ingredient.unit || ingredient.name);
+          if (SPECIAL_UNITS[unitNorm]) {
+            grams = ingredient.quantity * SPECIAL_UNITS[unitNorm];
+          }
+
+          ingredient = {
+            ...ingredient,
+            kcal: (data.kcal * grams) / 100,
+            carbs: (data.carbs * grams) / 100,
+            protein: (data.protein * grams) / 100,
+            fat: (data.fat * grams) / 100,
+          };
+        }
+      }
+
+      parsed.push(ingredient);
     }
 
     setIngredients((prev) => [...prev, ...parsed]);
@@ -645,79 +800,75 @@ export default function AddRecipeScreen() {
     });
   };
 
-  const handleOCRStep = async (index: number) => {
-    chooseImageSource(async (uri) => {
-      const text = await recognizeTextFromImage(uri);
+  const duplicateStep = (index: number) => {
+    setSteps((prev) => {
+      const arr = [...prev];
+      const item = prev[index];
 
-      setSteps((prev) =>
-        prev.map((s, i) =>
-          i === index ? { ...s, textImageUri: uri, description: text } : s,
-        ),
-      );
+      const clone: StepForm = {
+        title: item.title,
+        description: item.description,
+        imageUri: item.imageUri ?? null,
+        textImageUri: null,
+        collapsed: false,
+        actionsOpen: false,
+      };
+
+      arr.splice(index + 1, 0, clone);
+      return arr;
     });
   };
+
+  const noIngredients =
+    ingredients.length === 0 && groups.length === 0 && !ingredientsPhoto;
+
+  const opacity = useSharedValue(1);
+
+  const pulse = useSharedValue(1);
+  const pulseColor = useSharedValue(0);
+
+  useEffect(() => {
+    if (noIngredients) {
+      pulse.value = withRepeat(
+        withSequence(
+          withTiming(1.15, { duration: 400 }),
+          withTiming(1, { duration: 400 }),
+        ),
+        -1,
+        false,
+      );
+
+      pulseColor.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 400 }),
+          withTiming(0, { duration: 400 }),
+        ),
+        -1,
+        false,
+      );
+    } else {
+      pulse.value = withTiming(1, { duration: 300 });
+      pulseColor.value = withTiming(0, { duration: 300 });
+    }
+  }, [noIngredients]);
+
+  const pulseStyle = useAnimatedStyle(() => {
+    const color = interpolateColor(
+      pulseColor.value,
+      [0, 1],
+      [COLORS.textLight, COLORS.secondary], // da grigio → rosa
+    );
+
+    return {
+      transform: [{ scale: pulse.value }],
+      opacity: pulse.value < 1.05 ? 1 : 0.8,
+      color,
+    };
+  });
 
   /* ============================================================
      IMMAGINI
   ============================================================ */
-
-  const chooseImageSource = (onPick: (uri: string) => void) => {
-    const openCropper = (uri: string) => {
-      setImageToEdit(uri);
-      setEditorVisible(true);
-    };
-
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ["Annulla", "Scatta foto", "Scegli dalla galleria"],
-          cancelButtonIndex: 0,
-        },
-        async (buttonIndex) => {
-          if (buttonIndex === 1) {
-            const result = await ImagePicker.launchCameraAsync({
-              quality: 0.9,
-            });
-            if (!result.canceled) openCropper(result.assets[0].uri);
-          }
-
-          if (buttonIndex === 2) {
-            const result = await ImagePicker.launchImageLibraryAsync({
-              quality: 0.9,
-            });
-            if (!result.canceled) openCropper(result.assets[0].uri);
-          }
-        },
-      );
-    } else {
-      Alert.alert(
-        "Scegli immagine",
-        "",
-        [
-          {
-            text: "Scatta foto",
-            onPress: async () => {
-              const result = await ImagePicker.launchCameraAsync({
-                quality: 0.9,
-              });
-              if (!result.canceled) openCropper(result.assets[0].uri);
-            },
-          },
-          {
-            text: "Scegli dalla galleria",
-            onPress: async () => {
-              const result = await ImagePicker.launchImageLibraryAsync({
-                quality: 0.9,
-              });
-              if (!result.canceled) openCropper(result.assets[0].uri);
-            },
-          },
-          { text: "Annulla", style: "cancel" },
-        ],
-        { cancelable: true },
-      );
-    }
-  };
 
   const recognizeTextFromImage = async (uri: string) => {
     try {
@@ -748,7 +899,6 @@ export default function AddRecipeScreen() {
       return;
     }
 
-    // 1️⃣ Gruppi
     const groupsList = groups;
 
     const enrichedIngredients = ingredients.map((ing) =>
@@ -832,7 +982,8 @@ export default function AddRecipeScreen() {
       isFavorite: false,
       title: title.trim(),
       category: category === "all" ? "altro" : category,
-      prepTime: parseInt(prepTime) || 0,
+      prepTime: prepTime.trim() || "",
+      cookTime: cookTime.trim() || "",
       servings: parseInt(servings) || 1,
       imageUri: mainImageUri || undefined,
       tags: tags,
@@ -848,6 +999,117 @@ export default function AddRecipeScreen() {
     addRecipe(newRecipe);
     Alert.alert("Successo", "Ricetta salvata correttamente!");
     router.back();
+  };
+
+  const getStepActions = (index: number) => [
+    {
+      label: "OCR",
+      icon: "text-outline" as IoniconName,
+      onPress: () => chooseOCRImage(index),
+    },
+    {
+      label: "Duplica",
+      icon: "copy-outline" as IoniconName,
+      onPress: () => duplicateStep(index),
+    },
+    {
+      label: "Su",
+      icon: "caret-up-outline" as IoniconName,
+      onPress: () => moveStepUp(index),
+    },
+    {
+      label: "Giù",
+      icon: "caret-down-outline" as IoniconName,
+      onPress: () => moveStepDown(index),
+    },
+    {
+      label: "Elimina",
+      icon: "trash-outline" as IoniconName,
+      danger: true,
+      onPress: () => removeStep(index),
+    },
+  ];
+
+  const renderStepAction = (index: number, a: any) => (
+    <TouchableOpacity
+      key={a.label}
+      style={[styles.actionExpanded, a.danger && styles.actionExpandedDanger]}
+      onPress={() => {
+        a.onPress();
+        setOpenStepOverlay(null);
+      }}
+    >
+      <Ionicons
+        name={a.icon}
+        size={20}
+        color={a.danger ? "#cb0047" : COLORS.primary}
+        style={{ marginBottom: 4 }}
+      />
+      <Text
+        style={[styles.actionExpandedText, a.danger && { color: "#cb0047" }]}
+      >
+        {a.label}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  const renderStepActionsCollapsed = (index: number) => {
+    const actions = getStepActions(index);
+
+    return actions.map((a, i) => (
+      <React.Fragment key={i}>
+        <TouchableOpacity
+          style={styles.stepActionBtnCollapsed}
+          onPress={() => {
+            a.onPress();
+            setOpenStepOverlay(null);
+          }}
+        >
+          <Ionicons
+            name={a.icon}
+            size={20}
+            color={a.danger ? "#cb0047" : COLORS.secondary}
+          />
+          <Text
+            style={[
+              styles.stepActionLabelCollapsed,
+              a.danger && { color: "#cb0047" },
+            ]}
+          >
+            {a.label}
+          </Text>
+        </TouchableOpacity>
+
+        {i < actions.length - 1 && <View style={styles.stepDividerVertical} />}
+      </React.Fragment>
+    ));
+  };
+
+  const renderStepActionsExpanded = (index: number) => {
+    const actions = getStepActions(index);
+
+    return (
+      <View style={styles.expandedGrid}>
+        {/* ⭐ RIGA 1 */}
+        <View style={styles.expandedRow}>
+          {renderStepAction(index, actions[0])}
+          <View style={styles.stepDividerVerticalTop} />
+          {renderStepAction(index, actions[1])}
+        </View>
+
+        {/* ⭐ RIGA 2 */}
+        <View style={styles.expandedRow}>
+          {renderStepAction(index, actions[2])}
+          <View style={styles.stepDividerVerticalTop} />
+          {renderStepAction(index, actions[3])}
+        </View>
+
+        {/* ⭐ RIGA 3 (solo Elimina → centrato) */}
+        <View style={[styles.expandedRow, { borderColor: "white" }]}>
+          {renderStepAction(index, actions[4])}
+        </View>
+      </View>
+    );
   };
 
   /* ============================================================
@@ -879,10 +1141,8 @@ export default function AddRecipeScreen() {
             >
               <Animated.View style={[styles.heroContainer, heroStyle]}>
                 <TouchableOpacity
-                  onPress={() =>
-                    chooseImageSource((uri) => setMainImageUri(uri))
-                  }
-                  style={[styles.heroContainer]}
+                  onPress={() => chooseImage()}
+                  style={{ height: 300 }}
                 >
                   {mainImageUri ? (
                     <>
@@ -930,6 +1190,8 @@ export default function AddRecipeScreen() {
                   multiline
                   style={styles.titleInput}
                 />
+
+                {/* CATEGORIA */}
                 <View
                   style={{
                     marginBottom: 25,
@@ -948,38 +1210,80 @@ export default function AddRecipeScreen() {
                 </View>
 
                 {/* ⭐ INFO IN RIGA */}
-                <View style={styles.infoRow}>
-                  <Ionicons
-                    name="time-outline"
-                    size={22}
-                    color={COLORS.primary}
-                  />
-                  <Input
-                    placeholder="Tempo"
-                    value={prepTime}
-                    onChangeText={setPrepTime}
-                    keyboardType="default"
-                    style={styles.infoInputSmall}
-                  />
+                <View style={styles.infoColumn}>
+                  <View style={styles.labelRow}>
+                    <Ionicons
+                      name="time-outline"
+                      size={22}
+                      color={COLORS.primary}
+                      style={{ marginBottom: 17 }}
+                    />
 
-                  <Ionicons
-                    name="people-outline"
-                    size={22}
-                    color={COLORS.primary}
-                  />
-                  <Input
-                    placeholder="Porzioni"
-                    value={servings}
-                    onChangeText={setServings}
-                    keyboardType="default"
-                    style={styles.infoInputSmall}
-                  />
+                    <Text style={styles.label}>Preparazione:</Text>
+                    <Input
+                      placeholder="20 minuti"
+                      value={prepTime}
+                      onChangeText={setPrepTime}
+                      style={styles.infoInput}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.infoColumn}>
+                  <View style={styles.labelRow}>
+                    <Ionicons
+                      name="flame-outline"
+                      size={22}
+                      color={COLORS.primary}
+                      style={{ marginBottom: 17 }}
+                    />
+
+                    <Text style={styles.label}>Cottura:</Text>
+                    <Input
+                      placeholder="45 minuti"
+                      value={cookTime}
+                      onChangeText={setCookTime}
+                      style={styles.infoInput}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.infoColumn}>
+                  <View style={styles.labelRow}>
+                    <Ionicons
+                      name="people-outline"
+                      size={22}
+                      color={COLORS.primary}
+                      style={{ marginBottom: 17 }}
+                    />
+
+                    <Text style={styles.label}>Porzioni:</Text>
+                    <Input
+                      placeholder="4"
+                      value={servings}
+                      onChangeText={setServings}
+                      style={[styles.infoInput, { minWidth: 50 }]}
+                      keyboardType="numeric"
+                    />
+                  </View>
                 </View>
 
                 {/* ⭐ TAGS */}
+                <Text
+                  variant="heading"
+                  style={[styles.sectionTitle, { marginBottom: 20 }]}
+                >
+                  Tags
+                </Text>
                 <View style={styles.tagsContainer}>
+                  <Ionicons
+                    name="pricetag-outline"
+                    size={20}
+                    color={COLORS.primary}
+                    style={{ marginBottom: 10 }}
+                  />
                   <Input
-                    placeholder="Aggiungi tag"
+                    placeholder="Piatto Estivo"
                     value={tagInput}
                     onChangeText={setTagInput}
                     onSubmitEditing={() => {
@@ -1015,12 +1319,21 @@ export default function AddRecipeScreen() {
                   </Text>
 
                   <Input
-                    placeholder="Aggiungi note..."
+                    placeholder="Aggiungi qui info e curiosità sulla ricetta..."
                     value={notesText}
                     onChangeText={setNotesText}
                     multiline
                     style={styles.notesInput}
                   />
+
+                  {notesText.length > 0 && (
+                    <TouchableOpacity
+                      style={[styles.deleteSmallButton, { top: 55, right: 10 }]}
+                      onPress={() => setNotesText("")}
+                    >
+                      <Ionicons name="close" size={15} color="#cb0047" />
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {/* ============================================================
@@ -1071,9 +1384,9 @@ export default function AddRecipeScreen() {
                 {activeTab === "ingredienti" && (
                   <View style={styles.sectionWrapper}>
                     {/* ===========================
-                        FOTO OCR
-                        ============================ */}
-                    {ingredientsPhoto && (
+                        FOTO OCR INGREDIENTI
+                       ============================ */}
+                    {ingredientsPhoto && cropSize && (
                       <View style={{ width: "100%", marginBottom: 20 }}>
                         <TouchableOpacity
                           onPress={() => setIngredientsPhoto(null)}
@@ -1082,13 +1395,38 @@ export default function AddRecipeScreen() {
                           <Ionicons name="close" size={15} color="#cb0047" />
                         </TouchableOpacity>
 
-                        <View style={styles.imageWrapper}>
-                          <Image
+                        <View style={{ alignItems: "center" }}>
+                          <ExpoImage
                             source={{ uri: ingredientsPhoto }}
-                            style={[ingPhotoStyle, styles.dynamicImage]}
-                            resizeMode="contain"
+                            style={{
+                              width: displayW,
+                              height: displayH,
+                              borderRadius: 12,
+                              backgroundColor: "#eee",
+                            }}
+                            contentFit="cover"
+                            // ⭐ cover qui va bene perché l'immagine è già ritagliata e proporzionata
                           />
                         </View>
+                      </View>
+                    )}
+
+                    {noIngredients && (
+                      <View style={styles.emptyIngredientsWrapper}>
+                        <Text style={styles.emptyIngredientsText}>
+                          Nessun ingrediente ancora
+                        </Text>
+
+                        <Text style={styles.emptyIngredientsSub}>
+                          Tocca il pulsante in basso a destra per aggiungerne
+                          uno
+                        </Text>
+                        <Ionicons
+                          name="nutrition-outline"
+                          size={60}
+                          color={COLORS.textLight}
+                          style={{ marginTop: 10, opacity: 0.7 }}
+                        />
                       </View>
                     )}
 
@@ -1099,6 +1437,7 @@ export default function AddRecipeScreen() {
                       /* ============================
                      GRUPPO
                    ============================ */
+
                       if (item.type === "group") {
                         const groupIngredients = ingredientsInGroup(item.id);
 
@@ -1169,7 +1508,6 @@ export default function AddRecipeScreen() {
                                       fontFamily: "Outfit-SemiBold",
                                       color: COLORS.secondary,
                                       backgroundColor: "transparent",
-
                                       textAlign: "center",
                                       borderColor: "white",
                                     }}
@@ -1181,8 +1519,8 @@ export default function AddRecipeScreen() {
                                     <Ionicons
                                       name={
                                         item.collapsed
-                                          ? "chevron-down"
-                                          : "chevron-up"
+                                          ? "caret-down-outline"
+                                          : "caret-up-outline"
                                       }
                                       size={20}
                                       color={COLORS.secondary}
@@ -1238,7 +1576,7 @@ export default function AddRecipeScreen() {
                                         }}
                                       >
                                         <Ionicons
-                                          name="chevron-up-outline"
+                                          name="caret-up-outline"
                                           size={22}
                                           color={COLORS.secondary}
                                         />
@@ -1265,7 +1603,7 @@ export default function AddRecipeScreen() {
                                         }}
                                       >
                                         <Ionicons
-                                          name="chevron-down-outline"
+                                          name="caret-down-outline"
                                           size={22}
                                           color={COLORS.secondary}
                                         />
@@ -1339,7 +1677,7 @@ export default function AddRecipeScreen() {
                                           }}
                                         >
                                           <Ionicons
-                                            name="chevron-up-outline"
+                                            name="caret-up-outline"
                                             size={22}
                                             color={COLORS.secondary}
                                           />
@@ -1358,7 +1696,7 @@ export default function AddRecipeScreen() {
                                           }}
                                         >
                                           <Ionicons
-                                            name="chevron-down-outline"
+                                            name="caret-down-outline"
                                             size={22}
                                             color={COLORS.secondary}
                                           />
@@ -1813,7 +2151,7 @@ export default function AddRecipeScreen() {
                                             }}
                                           >
                                             <Ionicons
-                                              name="chevron-up-outline"
+                                              name="caret-up-outline"
                                               size={20}
                                               color={COLORS.secondary}
                                             />
@@ -1841,7 +2179,7 @@ export default function AddRecipeScreen() {
                                             }}
                                           >
                                             <Ionicons
-                                              name="chevron-down-outline"
+                                              name="caret-down-outline"
                                               size={20}
                                               color={COLORS.secondary}
                                             />
@@ -2022,7 +2360,6 @@ export default function AddRecipeScreen() {
                               style={{
                                 height: 1,
                                 backgroundColor: "#f1f1f1",
-
                                 alignItems: "center",
                               }}
                             ></View>
@@ -2205,7 +2542,7 @@ export default function AddRecipeScreen() {
                                   }}
                                 >
                                   <Ionicons
-                                    name="chevron-up-outline"
+                                    name="caret-up-outline"
                                     size={20}
                                     color={COLORS.secondary}
                                   />
@@ -2225,7 +2562,7 @@ export default function AddRecipeScreen() {
                                   }}
                                 >
                                   <Ionicons
-                                    name="chevron-down-outline"
+                                    name="caret-down-outline"
                                     size={20}
                                     color={COLORS.secondary}
                                   />
@@ -2249,102 +2586,13 @@ export default function AddRecipeScreen() {
                   <View style={styles.sectionWrapper}>
                     {steps.map((item, index) => (
                       <View key={index} style={{ position: "relative" }}>
-                        {/* ⭐ POPOVER SEMPRE SOPRA */}
-                        {openStepMenu === index && (
-                          <View style={styles.stepPopoverWrapper}>
-                            <View style={styles.stepPopover}>
-                              {/* OCR */}
-                              <TouchableOpacity
-                                style={styles.stepPopoverItem}
-                                onPress={() => {
-                                  handleOCRStep(index);
-                                  setOpenStepMenu(null);
-                                }}
-                              >
-                                <Text style={styles.stepPopoverText}>OCR</Text>
-                              </TouchableOpacity>
-
-                              {/* DUPLICA */}
-                              <TouchableOpacity
-                                style={styles.stepPopoverItem}
-                                onPress={() => {
-                                  const clone: StepForm = {
-                                    title: item.title,
-                                    description: item.description,
-                                    imageUri: item.imageUri ?? null,
-                                    textImageUri: null,
-                                    collapsed: false,
-                                    actionsOpen: false,
-                                  };
-                                  setSteps((prev) => {
-                                    const arr = [...prev];
-                                    arr.splice(index + 1, 0, clone);
-                                    return arr;
-                                  });
-                                  setOpenStepMenu(null);
-                                }}
-                              >
-                                <Text style={styles.stepPopoverText}>
-                                  Duplica
-                                </Text>
-                              </TouchableOpacity>
-
-                              {/* SPOSTA SU */}
-                              <TouchableOpacity
-                                style={styles.stepPopoverItem}
-                                onPress={() => {
-                                  moveStepUp(index);
-                                  setOpenStepMenu(null);
-                                }}
-                              >
-                                <Text style={styles.stepPopoverText}>
-                                  Sposta su
-                                </Text>
-                              </TouchableOpacity>
-
-                              {/* SPOSTA GIÙ */}
-                              <TouchableOpacity
-                                style={styles.stepPopoverItem}
-                                onPress={() => {
-                                  moveStepDown(index);
-                                  setOpenStepMenu(null);
-                                }}
-                              >
-                                <Text style={styles.stepPopoverText}>
-                                  Sposta giù
-                                </Text>
-                              </TouchableOpacity>
-
-                              {/* ELIMINA */}
-                              <TouchableOpacity
-                                style={styles.stepPopoverItem}
-                                onPress={() => {
-                                  removeStep(index);
-                                  setOpenStepMenu(null);
-                                }}
-                              >
-                                <Text
-                                  style={[
-                                    styles.stepPopoverText,
-                                    { color: "#cb0047" },
-                                  ]}
-                                >
-                                  Elimina
-                                </Text>
-                              </TouchableOpacity>
-                            </View>
-
-                            <View style={styles.stepPopoverArrow} />
-                          </View>
-                        )}
-
                         {/* ⭐ CARD (COLLASSATA O ESPANSA) */}
                         <Animated.View
                           entering={FadeInDown.delay(50)}
                           exiting={FadeOutUp}
                         >
                           {item.collapsed ? (
-                            /* ⭐ MINI‑CARD */
+                            /* ⭐ MINI‑CARD COLLASSATA */
                             <Pressable
                               onPress={() =>
                                 setSteps((prev) =>
@@ -2360,6 +2608,42 @@ export default function AddRecipeScreen() {
                                 { position: "relative" },
                               ]}
                             >
+                              {/* ⭐ OVERLAY ACTIONS */}
+                              {openStepOverlay === index && (
+                                <Animated.View
+                                  entering={FadeInRight.duration(180).damping(
+                                    18,
+                                  )}
+                                  exiting={FadeOutLeft.duration(150)}
+                                  style={styles.stepOverlay}
+                                >
+                                  {/* ⭐ X CHIUSURA */}
+                                  <TouchableOpacity
+                                    onPress={() => setOpenStepOverlay(null)}
+                                    style={[
+                                      styles.stepOverlayCloseBtn,
+                                      { right: 5 },
+                                    ]}
+                                  >
+                                    <Ionicons
+                                      name="close"
+                                      size={22}
+                                      color={COLORS.secondary}
+                                    />
+                                  </TouchableOpacity>
+
+                                  {/* ⭐ COLLASSATA → 5 pulsanti in riga */}
+                                  {item.collapsed ? (
+                                    <View style={styles.rowCollapsed}>
+                                      {renderStepActionsCollapsed(index)}
+                                    </View>
+                                  ) : (
+                                    /* ⭐ ESPANSA → 3 righe, 2 pulsanti per riga, ultimo centrato */
+                                    renderStepActionsExpanded(index)
+                                  )}
+                                </Animated.View>
+                              )}
+
                               {/* IMMAGINE */}
                               <View style={styles.stepCollapsedImageWrapper}>
                                 {item.imageUri ? (
@@ -2398,12 +2682,12 @@ export default function AddRecipeScreen() {
                                 </Text>
                               </View>
 
-                              {/* ⭐ ELLIPSIS DENTRO LA CARD */}
+                              {/* ⭐ ELLIPSIS → X */}
                               <Pressable
                                 onPress={(e) => {
                                   e.stopPropagation();
-                                  setOpenStepMenu(
-                                    openStepMenu === index ? null : index,
+                                  setOpenStepOverlay(
+                                    openStepOverlay === index ? null : index,
                                   );
                                 }}
                                 hitSlop={10}
@@ -2424,7 +2708,40 @@ export default function AddRecipeScreen() {
                               </Pressable>
                             </Pressable>
                           ) : (
+                            /* ⭐ CARD ESPANSA */
                             <View style={styles.stepExpandedCard}>
+                              {openStepOverlay === index && (
+                                <Animated.View
+                                  entering={FadeInRight.duration(180).damping(
+                                    18,
+                                  )}
+                                  exiting={FadeOutLeft.duration(150)}
+                                  style={styles.stepOverlay}
+                                >
+                                  {/* ⭐ X CHIUSURA */}
+                                  <TouchableOpacity
+                                    onPress={() => setOpenStepOverlay(null)}
+                                    style={styles.stepOverlayCloseBtn}
+                                  >
+                                    <Ionicons
+                                      name="close"
+                                      size={22}
+                                      color={COLORS.secondary}
+                                    />
+                                  </TouchableOpacity>
+
+                                  {/* ⭐ COLLASSATA → 5 pulsanti in riga */}
+                                  {item.collapsed ? (
+                                    <View style={styles.rowCollapsed}>
+                                      {renderStepActionsCollapsed(index)}
+                                    </View>
+                                  ) : (
+                                    /* ⭐ ESPANSA → 3 righe, 2 pulsanti per riga, ultimo centrato */
+                                    renderStepActionsExpanded(index)
+                                  )}
+                                </Animated.View>
+                              )}
+
                               {/* HEADER */}
                               <View style={styles.stepHeaderExpanded}>
                                 <View style={styles.stepNumberExpanded}>
@@ -2461,49 +2778,65 @@ export default function AddRecipeScreen() {
                                   </Text>
                                 </TouchableOpacity>
 
-                                <StepEllipsisButton
+                                {/* ⭐ ELLIPSIS → X */}
+                                <Pressable
                                   onPress={() =>
-                                    setOpenStepMenu(
-                                      openStepMenu === index ? null : index,
+                                    setOpenStepOverlay(
+                                      openStepOverlay === index ? null : index,
                                     )
                                   }
-                                />
-                              </View>
-
-                              <StepImage
-                                uri={item.imageUri ?? null}
-                                onPress={() =>
-                                  chooseImageSource((uri) =>
-                                    setSteps((prev) =>
-                                      prev.map((s, i) =>
-                                        i === index
-                                          ? { ...s, imageUri: uri }
-                                          : s,
-                                      ),
-                                    ),
-                                  )
-                                }
-                              />
-
-                              {item.imageUri && (
-                                <TouchableOpacity
-                                  onPress={() =>
-                                    setSteps((prev) =>
-                                      prev.map((s, i) =>
-                                        i === index
-                                          ? { ...s, imageUri: null }
-                                          : s,
-                                      ),
-                                    )
-                                  }
-                                  style={styles.deleteSmallButton}
+                                  style={{ padding: 6 }}
                                 >
                                   <Ionicons
-                                    name="close"
-                                    size={20}
-                                    color="#cb0047"
+                                    name="ellipsis-vertical"
+                                    size={22}
+                                    color={COLORS.primary}
                                   />
-                                </TouchableOpacity>
+                                </Pressable>
+                              </View>
+
+                              {/* IMMAGINE PRINCIPALE */}
+                              <StepImage
+                                uri={item.imageUri}
+                                onPress={() => chooseStepImage(index)}
+                              />
+
+                              {/* ⭐ OCR PREVIEW + DELETE */}
+                              {item.textImageUri && (
+                                <View style={{ position: "relative" }}>
+                                  <StepOcrPreview uri={item.textImageUri} />
+
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      setSteps((prev) =>
+                                        prev.map((s, i) =>
+                                          i === index
+                                            ? { ...s, textImageUri: null }
+                                            : s,
+                                        ),
+                                      )
+                                    }
+                                    style={{
+                                      position: "absolute",
+                                      top: 8,
+                                      right: 0,
+                                      backgroundColor: "white",
+                                      borderRadius: 20,
+                                      padding: 2,
+                                      shadowColor: "#000",
+                                      shadowOpacity: 0.15,
+                                      shadowRadius: 4,
+                                      elevation: 3,
+                                      zIndex: 20,
+                                    }}
+                                  >
+                                    <Ionicons
+                                      name="close"
+                                      size={20}
+                                      color="#cb0047"
+                                    />
+                                  </TouchableOpacity>
+                                </View>
                               )}
 
                               {/* DESCRIZIONE */}
@@ -2550,14 +2883,8 @@ export default function AddRecipeScreen() {
             </Animated.View>
 
             {/* ============================================================
-           FLOATING BUTTONS
-        ============================================================ */}
-            {/* FAB SALVA */}
-            <TouchableOpacity style={styles.fabSave} onPress={handleSave}>
-              <Text bold style={styles.fabSaveLabel}>
-                Salva
-              </Text>
-            </TouchableOpacity>
+               FLOATING BUTTONS
+              ============================================================ */}
 
             <Modal
               visible={isPickerOpen}
@@ -2736,6 +3063,13 @@ export default function AddRecipeScreen() {
             </Modal>
           </KeyboardAwareScrollView>
 
+          {/* FAB SALVA */}
+          <TouchableOpacity style={styles.fabSave} onPress={handleSave}>
+            <Text bold style={styles.fabSaveLabel}>
+              Salva
+            </Text>
+          </TouchableOpacity>
+
           {/* ⭐ BARRA FISSA INGREDIENTI */}
           {activeTab === "ingredienti" && (
             <View style={styles.fixedIngredientsBar}>
@@ -2803,7 +3137,7 @@ export default function AddRecipeScreen() {
                 }}
               >
                 <Ionicons
-                  name="scan-outline"
+                  name="text-outline"
                   size={18}
                   color={COLORS.textLight}
                 />
@@ -2833,36 +3167,38 @@ export default function AddRecipeScreen() {
               </TouchableOpacity>
 
               {/* NUOVO INGREDIENTE */}
-              <TouchableOpacity
-                onPress={() =>
-                  setIngredients((prev) => [
-                    ...prev,
-                    {
-                      id: uid(),
-                      type: "ingredient",
-                      name: "",
-                      quantity: "",
-                      unit: "",
-                      groupId: null,
-                      linkedRecipeId: null,
-                    },
-                  ])
-                }
-                style={{
-                  paddingHorizontal: 10,
-                  alignItems: "center",
-                  paddingVertical: 12,
-                }}
-              >
-                <Ionicons
-                  name="add-circle-outline"
-                  size={18}
-                  color={COLORS.textLight}
-                />
-                <Text style={{ color: COLORS.textLight, fontSize: 10 }}>
-                  Ingrediente
-                </Text>
-              </TouchableOpacity>
+              <Animated.View style={noIngredients ? pulseStyle : undefined}>
+                <TouchableOpacity
+                  onPress={() =>
+                    setIngredients((prev) => [
+                      ...prev,
+                      {
+                        id: uid(),
+                        type: "ingredient",
+                        name: "",
+                        quantity: "",
+                        unit: "",
+                        groupId: null,
+                        linkedRecipeId: null,
+                      },
+                    ])
+                  }
+                  style={{
+                    paddingHorizontal: 10,
+                    alignItems: "center",
+                    paddingVertical: 12,
+                  }}
+                >
+                  <Ionicons
+                    name="add-circle-outline"
+                    size={18}
+                    color={COLORS.textLight}
+                  />
+                  <Text style={{ color: COLORS.textLight, fontSize: 10 }}>
+                    Ingrediente
+                  </Text>
+                </TouchableOpacity>
+              </Animated.View>
             </View>
           )}
 
@@ -2909,6 +3245,7 @@ const styles = StyleSheet.create({
   ============================================================ */
   container: {
     flex: 1,
+    lineHeight: 30,
   },
 
   bg: {
@@ -2931,15 +3268,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-
   infoRow: {
     flexDirection: "row",
     justifyContent: "center",
+    alignItems: "flex-start",
     marginBottom: 18,
     gap: 10,
   },
@@ -2958,9 +3290,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    gap: 8,
-    marginBottom: 20,
+    gap: 7,
+    alignItems: "center",
+    backgroundColor: "#fff",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
+
   tag: {
     backgroundColor: COLORS.primary,
     paddingHorizontal: 12,
@@ -2980,25 +3316,14 @@ const styles = StyleSheet.create({
     fontFamily: "Outfit-SemiBold",
   },
 
-  infoInput: {
-    flex: 1,
-    marginLeft: 3,
-    paddingVertical: 4,
-  },
-
-  infoInputSmall: {
-    width: 90,
-    marginLeft: 3,
-    paddingVertical: 4,
-    textAlign: "center",
-  },
-
   tagInput: {
-    marginBottom: 10,
     paddingVertical: 6,
+    textAlignVertical: "center",
   },
 
   tagsList: {
+    paddingVertical: 6,
+
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
@@ -3009,19 +3334,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
 
-  notesInlineText: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: "#444",
-    marginTop: 6,
-  },
-
   notesInput: {
-    paddingVertical: 10,
-    paddingHorizontal: 15,
+    marginHorizontal: 10,
+    padding: 20,
     minHeight: 80,
     fontSize: 15,
-    lineHeight: 22,
+    lineHeight: 30,
     textAlignVertical: "top",
     color: "#333",
   },
@@ -3042,7 +3360,7 @@ const styles = StyleSheet.create({
   },
 
   heroPlaceholder: {
-    marginTop: 40,
+    marginTop: 80,
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
@@ -3078,7 +3396,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 24,
     paddingBottom: 220,
-    marginTop: 0,
     shadowColor: "#000",
     shadowOpacity: 0.08,
     shadowRadius: 10,
@@ -3129,8 +3446,8 @@ const styles = StyleSheet.create({
   },
 
   tabLabel: {
-    fontSize: 16,
-    color: "#777",
+    fontSize: 18,
+    color: "#8c8c8c",
   },
 
   tabLabelActive: {
@@ -3199,8 +3516,8 @@ const styles = StyleSheet.create({
 
   deleteSmallButton: {
     position: "absolute",
-    top: -5,
-    right: 10,
+    top: 5,
+    right: 0,
     zIndex: 20,
     backgroundColor: "white",
     borderRadius: 20,
@@ -3477,7 +3794,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 10,
     paddingVertical: 0,
-    zIndex: 10, // sotto l’ellipsis
+    zIndex: 10,
   },
 
   ingredientActionBtn: {
@@ -3508,7 +3825,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginLeft: -20,
     marginRight: -20,
-    // paddingHorizontal: 20,
     marginTop: 10,
     shadowColor: "#000",
     shadowOpacity: 0.15,
@@ -3526,6 +3842,7 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     backgroundColor: "white",
   },
+
   checkboxSelected: {
     backgroundColor: "white",
     borderColor: COLORS.primary,
@@ -3648,5 +3965,154 @@ const styles = StyleSheet.create({
     left: "55%",
     width: 1,
     backgroundColor: "#ddd",
+  },
+
+  stepOverlayCloseBtn: {
+    position: "absolute",
+    top: 30,
+    right: 10,
+    padding: 6,
+    zIndex: 60,
+  },
+
+  stepActionBtnCollapsed: {
+    width: 60,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+    paddingVertical: 6,
+  },
+
+  stepActionLabelCollapsed: {
+    fontSize: 10,
+    color: COLORS.textLight,
+    marginTop: 2,
+  },
+
+  stepDividerVertical: {
+    width: 1,
+    height: "60%",
+    backgroundColor: "#ddd",
+  },
+
+  /* ⭐ COLLASSATA */
+  rowCollapsed: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    marginBottom: 25,
+    marginRight: 14,
+  },
+
+  /* ⭐ ESPANSA */
+  expandedGrid: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  expandedRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    borderColor: "#eee",
+    borderBottomWidth: 1,
+  },
+
+  actionExpanded: {
+    width: 110,
+    backgroundColor: "#fff",
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderColor: "#eee",
+  },
+
+  actionExpandedDanger: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  actionExpandedText: {
+    fontSize: 10,
+    color: COLORS.textLight,
+  },
+
+  stepOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(255,255,255,0.97)",
+    borderRadius: 14,
+    paddingTop: 40,
+    paddingHorizontal: 20,
+    zIndex: 50,
+
+    // ⭐ Per centrare verticalmente il contenuto
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  stepDividerVerticalTop: {
+    width: 1,
+    height: 60,
+    backgroundColor: "#eee",
+  },
+
+  emptyIngredientsWrapper: {
+    width: "100%",
+    paddingVertical: 60,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    opacity: 0.7,
+  },
+
+  emptyIngredientsText: {
+    fontSize: 18,
+    fontFamily: "Outfit-SemiBold",
+    color: COLORS.textLight,
+    marginBottom: 6,
+    textAlign: "center",
+  },
+
+  emptyIngredientsSub: {
+    fontSize: 14,
+    fontFamily: "Outfit-Regular",
+    color: COLORS.textLight,
+    marginBottom: 20,
+    textAlign: "center",
+  },
+
+  infoColumn: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
+
+  labelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+
+  label: {
+    fontSize: 16,
+    marginRight: 2,
+    color: COLORS.text,
+    marginBottom: 17,
+  },
+
+  infoInput: {
+    minWidth: 100,
+    textAlign: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: "#fff",
+    borderRadius: 30,
+    fontSize: 16,
+    textAlignVertical: "center",
   },
 });

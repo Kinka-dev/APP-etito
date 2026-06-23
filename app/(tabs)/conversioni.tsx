@@ -290,7 +290,7 @@ function ImperialMetricCard() {
         <View style={styles.inputColumn}>
           <View style={styles.inputWithUnit}>
             <Input
-              style={[styles.input, { flex: 1 }]}
+              style={[styles.input, { flex: 1, textAlignVertical: "center" }]}
               placeholder="0"
               keyboardType="numeric"
               value={imperialValue}
@@ -349,7 +349,7 @@ function ImperialMetricCard() {
         <View style={styles.inputColumn}>
           <View style={styles.inputWithUnit}>
             <Input
-              style={[styles.input, { flex: 1 }]}
+              style={[styles.input, { flex: 1, textAlignVertical: "center" }]}
               placeholder="0"
               keyboardType="numeric"
               value={metricValue}
@@ -503,7 +503,7 @@ function VolumeWeightCard() {
           <Text style={styles.label}>Millilitri</Text>
           <View style={styles.inputWithUnit}>
             <Input
-              style={[styles.input, { flex: 1 }]}
+              style={[styles.input, { flex: 1, textAlignVertical: "center" }]}
               placeholder="0"
               keyboardType="numeric"
               value={mlValue}
@@ -541,7 +541,7 @@ function VolumeWeightCard() {
           <Text style={styles.label}>Grammi</Text>
           <View style={styles.inputWithUnit}>
             <Input
-              style={[styles.input, { flex: 1 }]}
+              style={[styles.input, { flex: 1, textAlignVertical: "center" }]}
               placeholder="0"
               keyboardType="numeric"
               value={gValue}
@@ -678,7 +678,7 @@ function TemperatureCard() {
         <View style={styles.inputColumn}>
           <View style={styles.inputWithUnit}>
             <Input
-              style={[styles.input, { flex: 1 }]}
+              style={[styles.input, { flex: 1, textAlignVertical: "center" }]}
               placeholder="0"
               keyboardType="numeric"
               value={cValue}
@@ -714,7 +714,7 @@ function TemperatureCard() {
         <View style={styles.inputColumn}>
           <View style={styles.inputWithUnit}>
             <Input
-              style={[styles.input, { flex: 1 }]}
+              style={[styles.input, { flex: 1, textAlignVertical: "center" }]}
               placeholder="0"
               keyboardType="numeric"
               value={fValue}
@@ -746,7 +746,7 @@ function TemperatureCard() {
         <View style={styles.inputColumn}>
           <View style={styles.inputWithUnit}>
             <Input
-              style={[styles.input, { flex: 1 }]}
+              style={[styles.input, { flex: 1, textAlignVertical: "center" }]}
               placeholder="0"
               keyboardType="numeric"
               value={staticTemp}
@@ -774,7 +774,7 @@ function TemperatureCard() {
         <View style={styles.inputColumn}>
           <View style={styles.inputWithUnit}>
             <Input
-              style={[styles.input, { flex: 1 }]}
+              style={[styles.input, { flex: 1, textAlignVertical: "center" }]}
               placeholder="0"
               keyboardType="numeric"
               value={fanTemp}
@@ -864,7 +864,7 @@ function YeastCard() {
           <Text style={styles.label}>Fresco</Text>
           <View style={styles.inputWithUnit}>
             <Input
-              style={[styles.input, { flex: 1 }]}
+              style={[styles.input, { flex: 1, textAlignVertical: "center" }]}
               placeholder="0"
               keyboardType="numeric"
               value={freshValue}
@@ -901,7 +901,7 @@ function YeastCard() {
           <Text style={styles.label}>Secco</Text>
           <View style={styles.inputWithUnit}>
             <Input
-              style={[styles.input, { flex: 1 }]}
+              style={[styles.input, { flex: 1, textAlignVertical: "center" }]}
               placeholder="0"
               keyboardType="numeric"
               value={dryValue}
@@ -1423,6 +1423,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     width: "100%",
     borderColor: "white",
+    textAlignVertical: "center",
   },
 
   pillContainer: {

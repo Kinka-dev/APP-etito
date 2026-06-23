@@ -1,4 +1,5 @@
 // src/components/Input.tsx
+import React, { forwardRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -11,19 +12,25 @@ interface Props extends TextInputProps {
   label?: string;
 }
 
-export default function Input({ label, style, ...rest }: Props) {
+const Input = forwardRef<TextInput, Props>(({ label, style, ...rest }, ref) => {
+  const isEmpty = !rest.value || rest.value.length === 0;
+
   return (
     <View style={{ marginBottom: 14 }}>
       {label && <Text style={styles.label}>{label}</Text>}
 
       <TextInput
+        ref={ref} // ⭐ ora il ref funziona
         {...rest}
-        style={[styles.input, style, { color: "#333" }]} // ⭐ colore sempre applicato
+        multiline={true}
+        style={[styles.input, style, { color: "#333" }]}
         placeholderTextColor="#999"
       />
     </View>
   );
-}
+});
+
+export default Input;
 
 const styles = StyleSheet.create({
   label: {
@@ -39,10 +46,11 @@ const styles = StyleSheet.create({
     color: "#333",
     backgroundColor: "white",
     paddingHorizontal: 14,
-    paddingVertical: 15,
+    paddingVertical: 8,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: "#eee",
-    textAlignVertical: "center",
+    textAlignVertical: "top",
+    lineHeight: 30,
   },
 });

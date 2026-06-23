@@ -1,3 +1,5 @@
+// parseIngredients.ts
+
 // Mappa per convertire frazioni Unicode in numeri
 const FRACTIONS_MAP: Record<string, number> = {
   "¼": 0.25,
@@ -58,6 +60,10 @@ const UNITS = [
   "bustine",
   "tazza",
   "tazze",
+  "pizzico",
+  "manciata",
+  "manciate",
+  "pizzichi",
   "q.b.",
   "qb",
   "q b",
@@ -162,6 +168,10 @@ export function parseIngredientLine(line: string) {
     "l",
     "cl",
     "dl",
+    "pizzico",
+    "manciata",
+    "manciate",
+    "pizzichi",
     "spicchio",
     "spicchi",
     "cucchiaio",

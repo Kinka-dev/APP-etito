@@ -1,5 +1,5 @@
 // src/context/RecipeContext.tsx
-import { DEFAULT_RECIPES } from "@/app/data/defaultRecipes";
+// import { DEFAULT_RECIPES } from "@/app/data/defaultRecipes";
 import Text from "@/components/Text";
 import { Ingredient, Recipe } from "@/src/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -64,8 +64,8 @@ export function RecipeProvider({ children }: { children: ReactNode }) {
       const saved = await AsyncStorage.getItem("recipes");
 
       if (!saved) {
-        await AsyncStorage.setItem("recipes", JSON.stringify(DEFAULT_RECIPES));
-        setRecipes(DEFAULT_RECIPES);
+        // await AsyncStorage.setItem("recipes", JSON.stringify(DEFAULT_RECIPES));
+        // setRecipes(DEFAULT_RECIPES);
       } else {
         setRecipes(JSON.parse(saved));
       }
